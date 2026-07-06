@@ -1,0 +1,63 @@
+# =====================
+# Python backend
+# =====================
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python build/package files
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Logs
+*.log
+
+# =====================
+# Node / Vue frontend
+# =====================
+
+node_modules/
+frontend/node_modules/
+
+# Vite build output
+dist/
+frontend/dist/
+
+# Local env files
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# =====================
+# IDE / Editor
+# =====================
+
+.vscode/
+.idea/
+
+# =====================
+# OS files
+# =====================
+
+.DS_Store
+Thumbs.db
+
+# =====================
+# Docker / misc
+# =====================
+
+*.pid
