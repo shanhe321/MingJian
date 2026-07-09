@@ -2,7 +2,7 @@
   <header class="app-header">
     <!-- 左侧：Logo + 平台名称 -->
     <div class="header-left">
-      <img src="/favicon.svg" alt="logo" class="header-logo" />
+      <img :src="logoSrc" alt="logo" class="header-logo" />
       <span class="header-title">RSOD Agent Platform</span>
     </div>
 
@@ -39,6 +39,7 @@ import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const userStore = useUserStore()
+const logoSrc = "/favicon.svg"
 
 /** 处理下拉菜单命令 */
 function handleCommand(command) {
