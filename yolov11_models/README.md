@@ -1,6 +1,6 @@
 # YOLO11 PCB Defect Detection
 
-本目录汇总了本次 PCB 缺陷检测实验的核心代码与最佳权重，适合单独上传 GitHub。
+本目录汇总了本次 PCB 缺陷检测的核心代码与最佳权重。
 
 ## 文件结构
 
@@ -28,7 +28,6 @@ pip install torch==2.5.1 torchvision --index-url https://download.pytorch.org/wh
 pip install -r requirements.txt
 ```
 
-CPU 环境也可以推理，但速度会慢很多。CPU 环境安装时可按 PyTorch 官网选择对应命令。
 
 训练环境：
 
@@ -117,7 +116,7 @@ python infer_pcb_defect.py \
 
 ## 训练复现
 
-训练脚本默认读取本目录下的 `data.yaml`。上传 GitHub 后，可将数据集按如下结构放置：
+训练脚本默认读取本目录下的 `data.yaml`。可将数据集按如下结构放置：
 
 ```text
 github_yolo11_pcb_release/
