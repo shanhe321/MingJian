@@ -4,11 +4,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config.settings import settings
-from app.api.auth import router as auth_router
 
 from app.core.exceptions import register_exception_handlers
 from app.middleware.request_logger import RequestLogMiddleware
 
+from app.api.auth import router as auth_router
 from app.api.health import router as health_router
 from app.api.training import router as training_router
 
