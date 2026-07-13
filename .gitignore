@@ -44,6 +44,17 @@ backend/logs/*
 !backend/logs/.gitkeep
 *.log
 
+# Machine learning datasets, training outputs, and model artifacts.
+backend/datasets/
+backend/runs/
+backend/models/
+backend/*.pt
+backend/*.pth
+backend/*.ckpt
+backend/*.onnx
+backend/*.engine
+backend/*.torchscript
+
 # =====================
 # Node / Vue frontend
 # =====================
