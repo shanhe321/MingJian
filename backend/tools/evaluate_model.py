@@ -17,13 +17,18 @@
     # 指定数据集和测试集
     python tools/evaluate_model.py \
         --weights runs/train/task_xxxxxxxx/weights/best.pt \
-        --data datasets/pcb_defect/data.yaml \
+        --data datasets/rsod/yolo_dataset/data.yaml \
         --split test
 
     # 调整置信度阈值和 IoU 阈值
     python tools/evaluate_model.py \
         --weights runs/train/task_xxxxxxxx/weights/best.pt \
         --conf 0.25 --iou 0.45
+
+    # 保存评估报告到指定目录
+    python tools/evaluate_model.py \
+        --weights runs/train/task_xxxxxxxx/weights/best.pt \
+        --output models/eval_report
 
 依赖：
     pip install ultralytics
@@ -40,24 +45,33 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def find_data_yaml(weights_path: str) -> str:
     """根据权重路径自动查找 data.yaml"""
-    task_dir = os.path.dirname(os.path.dirname(weights_path))
+    task_dir = os.path.dirname(os.path.dirname(os.path.abspath(weights_path)))
 
     args_yaml = os.path.join(task_dir, "args.yaml")
     if os.path.exists(args_yaml):
-        with open(args_yaml, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("data:"):
-                    data_path = line.split(":", 1)[1].strip()
-                    if os.path.exists(data_path):
-                        return data_path
+        try:
+            import yaml
+
+            with open(args_yaml, "r", encoding="utf-8") as f:
+                data_path = str((yaml.safe_load(f) or {}).get("data", ""))
+            if data_path:
+                if not os.path.isabs(data_path):
+                    data_path = os.path.join(PROJECT_ROOT, data_path)
+                if os.path.exists(data_path):
+                    return os.path.abspath(data_path)
+        except (ImportError, OSError, ValueError, TypeError):
+            pass
 
     datasets_dir = os.path.join(PROJECT_ROOT, "datasets")
     if os.path.exists(datasets_dir):
-        for scene_dir in os.listdir(datasets_dir):
-            yaml_path = os.path.join(datasets_dir, scene_dir, "data.yaml")
-            if os.path.exists(yaml_path):
-                return yaml_path
+        for scene_dir in sorted(os.listdir(datasets_dir)):
+            for relative_path in (
+                os.path.join(scene_dir, "yolo_dataset", "data.yaml"),
+                os.path.join(scene_dir, "data.yaml"),
+            ):
+                yaml_path = os.path.join(datasets_dir, relative_path)
+                if os.path.exists(yaml_path):
+                    return os.path.abspath(yaml_path)
 
     return ""
 
