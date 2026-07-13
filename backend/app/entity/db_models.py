@@ -129,9 +129,17 @@ class DetectionScene(Base):
 
     # 关联
     detection_tasks = relationship("DetectionTask", back_populates="scene")
-    model_versions = relationship("ModelVersion", back_populates="scene")
+    model_versions = relationship(
+        "ModelVersion",
+        back_populates="scene",
+        foreign_keys="[ModelVersion.scene_id]",
+    )
     training_tasks = relationship("TrainingTask", back_populates="scene")
-    default_model_version = relationship("ModelVersion", foreign_keys=[default_model_version_id], post_update=True)
+    default_model_version = relationship(
+        "ModelVersion",
+        foreign_keys=[default_model_version_id],
+        post_update=True,
+    )
 
 
 class DatasetProject(Base):
