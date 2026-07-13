@@ -45,6 +45,7 @@ class User(Base):
     training_tasks = relationship("TrainingTask", back_populates="user")
     chat_sessions = relationship("ChatSession", back_populates="user")
     operation_logs = relationship("OperationLog", back_populates="user")
+    dataset_projects = relationship("DatasetProject", back_populates="user")
 
 
 class Role(Base):
@@ -121,6 +122,7 @@ class DetectionScene(Base):
     class_names = Column(JSON, nullable=False, comment="类别列表，如 [\"airplane\",\"storage-tank\"]")
     class_names_cn = Column(JSON, nullable=True, comment="类别中文名映射，如 {\"airplane\":\"飞机\"}")
     is_active = Column(Boolean, default=True, comment="是否启用")
+    default_model_version_id = Column(Integer, ForeignKey("model_versions.id"), nullable=True, comment="默认模型版本")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True, comment="创建人")
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
@@ -129,6 +131,72 @@ class DetectionScene(Base):
     detection_tasks = relationship("DetectionTask", back_populates="scene")
     model_versions = relationship("ModelVersion", back_populates="scene")
     training_tasks = relationship("TrainingTask", back_populates="scene")
+    default_model_version = relationship("ModelVersion", foreign_keys=[default_model_version_id], post_update=True)
+
+
+class DatasetProject(Base):
+    """数据集项目表"""
+    __tablename__ = "dataset_projects"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, comment="创建者")
+    scene_id = Column(Integer, ForeignKey("detection_scenes.id"), nullable=False, index=True, comment="所属场景")
+    name = Column(String(200), nullable=False, comment="数据集名称")
+    description = Column(Text, nullable=True, comment="数据集说明")
+    storage_path = Column(String(500), nullable=True, comment="数据集存储路径")
+    total_images = Column(Integer, default=0, comment="图片总数")
+    train_images = Column(Integer, default=0, comment="训练集图片数")
+    val_images = Column(Integer, default=0, comment="验证集图片数")
+    test_images = Column(Integer, default=0, comment="测试集图片数")
+    status = Column(String(20), nullable=False, default="prepared", comment="状态：prepared/validating/ready/failed")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
+
+    # 关联
+    user = relationship("User", back_populates="dataset_projects")
+    scene = relationship("DetectionScene")
+    images = relationship("DatasetImage", back_populates="dataset", cascade="all, delete-orphan")
+    training_tasks = relationship("TrainingTask", back_populates="dataset_project")
+
+
+class DatasetImage(Base):
+    """数据集图片表"""
+    __tablename__ = "dataset_images"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dataset_project_id = Column(Integer, ForeignKey("dataset_projects.id"), nullable=False, index=True, comment="所属数据集")
+    image_name = Column(String(255), nullable=False, comment="图片文件名")
+    image_path = Column(String(500), nullable=False, comment="图片路径")
+    label_path = Column(String(500), nullable=True, comment="标注文件路径")
+    split = Column(String(20), nullable=False, comment="数据划分：train/val/test")
+    width = Column(Integer, nullable=True, comment="图像宽")
+    height = Column(Integer, nullable=True, comment="图像高")
+    defect_count = Column(Integer, default=0, comment="图片中缺陷数量")
+    checksum = Column(String(128), nullable=True, comment="文件校验码")
+    status = Column(String(20), nullable=False, default="valid", comment="状态：valid/invalid/ignored")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+
+    # 关联
+    dataset = relationship("DatasetProject", back_populates="images")
+    annotations = relationship("DatasetAnnotation", back_populates="image", cascade="all, delete-orphan")
+
+
+class DatasetAnnotation(Base):
+    """数据集标注表"""
+    __tablename__ = "dataset_annotations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    image_id = Column(Integer, ForeignKey("dataset_images.id"), nullable=False, index=True, comment="所属图片")
+    class_id = Column(Integer, nullable=False, comment="缺陷类别ID")
+    class_name = Column(String(50), nullable=False, comment="缺陷类别名称")
+    bbox = Column(JSON, nullable=False, comment="边界框 [x1, y1, x2, y2]")
+    confidence = Column(Float, nullable=True, comment="标注置信度")
+    source = Column(String(20), nullable=False, default="import", comment="来源：manual/auto/import")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True, comment="标注创建者")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+
+    # 关联
+    image = relationship("DatasetImage", back_populates="annotations")
 
 
 class DetectionTask(Base):
@@ -209,6 +277,7 @@ class TrainingTask(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, comment="操作用户")
     scene_id = Column(Integer, ForeignKey("detection_scenes.id"), nullable=False, index=True, comment="关联场景")
+    dataset_project_id = Column(Integer, ForeignKey("dataset_projects.id"), nullable=True, comment="训练数据集")
     task_uuid = Column(String(100), unique=True, nullable=False, index=True, comment="任务唯一标识")
     status = Column(String(20), default="pending", comment="状态：pending/running/completed/failed/cancelled")
 
@@ -242,6 +311,7 @@ class TrainingTask(Base):
     # 关联
     user = relationship("User", back_populates="training_tasks")
     scene = relationship("DetectionScene", back_populates="training_tasks")
+    dataset_project = relationship("DatasetProject", back_populates="training_tasks")
     metrics = relationship("TrainingMetric", back_populates="task", cascade="all, delete-orphan")
     model_versions = relationship("ModelVersion", back_populates="training_task")
 

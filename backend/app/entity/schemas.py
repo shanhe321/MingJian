@@ -155,6 +155,77 @@ class SceneResponse(BaseModel):
         from_attributes = True
 
 
+# --- 数据集管理 ---
+
+class DatasetProjectCreate(BaseModel):
+    """创建数据集项目"""
+    scene_id: int = Field(..., description="所属场景ID")
+    name: str = Field(..., min_length=1, max_length=200, description="数据集名称")
+    description: Optional[str] = Field(None, description="数据集说明")
+
+
+class DatasetProjectResponse(BaseModel):
+    """数据集项目响应"""
+    id: int
+    user_id: int
+    scene_id: int
+    name: str
+    description: Optional[str] = None
+    storage_path: Optional[str] = None
+    total_images: int
+    train_images: int
+    val_images: int
+    test_images: int
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DatasetImageResponse(BaseModel):
+    """数据集图片响应"""
+    id: int
+    dataset_project_id: int
+    image_name: str
+    image_path: str
+    label_path: Optional[str] = None
+    split: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+    defect_count: int
+    checksum: Optional[str] = None
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DatasetAnnotationResponse(BaseModel):
+    """数据集标注响应"""
+    id: int
+    image_id: int
+    class_id: int
+    class_name: str
+    bbox: list
+    confidence: Optional[float] = None
+    source: str
+    created_by: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DatasetProjectDetail(BaseModel):
+    """数据集项目详情（含图片和标注列表）"""
+    project: DatasetProjectResponse
+    images: list[DatasetImageResponse] = []
+    stats: Optional[dict] = None  # 各类别统计
+
+
 # --- 检测任务 ---
 
 class DetectionTaskResponse(BaseModel):
@@ -227,6 +298,7 @@ class DetectionStatistics(BaseModel):
 class TrainingTaskCreate(BaseModel):
     """创建训练任务"""
     scene_id: int = Field(..., description="关联场景 ID")
+    dataset_project_id: Optional[int] = Field(None, description="训练数据集项目ID")
     model_name: str = Field(default="yolov11n", description="基础模型")
     epochs: int = Field(default=100, ge=10, le=500, description="训练轮数")
     img_size: int = Field(default=640, description="图像尺寸")
@@ -243,6 +315,7 @@ class TrainingTaskResponse(BaseModel):
     user_id: int
     scene_id: int
     scene_name: Optional[str] = None
+    dataset_project_id: Optional[int] = None
     task_uuid: str
     status: str
     model_name: str
