@@ -1,2 +1,0 @@
-image,image_name,image_width,image_height,class_id,class_name,confidence,x1,y1,x2,y2,bbox_width,bbox_height
-/root/autodl-tmp/rsod-agent-platform/backend/datasets/pcb_defect/images/test/l_light_01_missing_hole_01_1_600.jpg,l_light_01_missing_hole_01_1_600.jpg,600,600,0,missing_hole,0.8294733762741089,239.41348266601562,404.39837646484375,281.63134765625,437.4794921875,42.217864990234375,33.08111572265625
