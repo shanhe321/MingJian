@@ -402,6 +402,36 @@ class ModelVersionCreate(BaseModel):
     description: Optional[str] = None
 
 
+# --- 模型评估（Day 7 新增）---
+
+class EvaluateRequest(BaseModel):
+    """模型评估请求"""
+    split: str = Field(default="val", description="评估数据集划分：val/test")
+    conf: float = Field(default=0.25, ge=0.001, le=1.0, description="置信度阈值")
+    iou: float = Field(default=0.45, ge=0.1, le=1.0, description="NMS IoU 阈值")
+
+
+class EvaluateResponse(BaseModel):
+    """模型评估响应"""
+    task_id: int
+    split: str
+    overall: dict
+    per_class: dict
+
+
+# --- 模型导出（Day 7 新增）---
+
+class ModelExportResponse(BaseModel):
+    """模型导出响应"""
+    id: int
+    version: str
+    model_name: str
+    model_path: str
+    file_size: Optional[int] = None
+    map50: Optional[float] = None
+    map50_95: Optional[float] = None
+
+
 # ══════════════════════════════════════════════════════════════
 # 四、智能体对话
 # ══════════════════════════════════════════════════════════════
