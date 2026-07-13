@@ -1,0 +1,29 @@
+{
+  "images": [
+    {
+      "image": "/root/autodl-tmp/rsod-agent-platform/backend/datasets/pcb_defect/images/test/l_light_01_missing_hole_01_1_600.jpg",
+      "image_name": "l_light_01_missing_hole_01_1_600.jpg",
+      "width": 600,
+      "height": 600,
+      "detections": [
+        {
+          "class_id": 0,
+          "class_name": "missing_hole",
+          "confidence": 0.8294733762741089,
+          "bbox_xyxy": [
+            239.41348266601562,
+            404.39837646484375,
+            281.63134765625,
+            437.4794921875
+          ],
+          "bbox_xywh": [
+            239.41348266601562,
+            404.39837646484375,
+            42.217864990234375,
+            33.08111572265625
+          ]
+        }
+      ]
+    }
+  ]
+}
