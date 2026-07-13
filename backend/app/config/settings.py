@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     LOG_MAX_BYTES: int = 10 * 1024 * 1024  # 单文件最大 10MB
     LOG_BACKUP_COUNT: int = 5         # 保留 5 份历史日志
 
+    # ── 训练配置（Day 6-7）───────────────────────────
+    TRAIN_OUTPUT_DIR: str = "runs/train"      # 训练输出根目录
+    DATASET_BASE_DIR: str = "datasets"         # 数据集根目录
+
 
 # 创建全局单例，其他模块直接 import 使用
 settings = Settings()
