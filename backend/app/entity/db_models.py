@@ -384,7 +384,11 @@ class ModelVersion(Base):
     created_at = Column(DateTime, default=datetime.now, comment="创建时间")
 
     # 关联
-    scene = relationship("DetectionScene", back_populates="model_versions")
+    scene = relationship(
+        "DetectionScene",
+        back_populates="model_versions",
+        foreign_keys=[scene_id],
+    )
     training_task = relationship("TrainingTask", back_populates="model_versions")
     detection_tasks = relationship("DetectionTask", back_populates="model_version")
 
