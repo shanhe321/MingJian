@@ -86,6 +86,7 @@ def setup_logging():
     logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
     logging.getLogger("minio").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("watchfiles").setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:

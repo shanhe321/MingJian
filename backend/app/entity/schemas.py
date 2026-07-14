@@ -11,7 +11,13 @@ Pydantic 请求/响应模型
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class _ModelFieldsBase(BaseModel):
+    """允许模型业务字段使用 ``model_`` 前缀。"""
+
+    model_config = ConfigDict(protected_namespaces=())
 
 
 # ══════════════════════════════════════════════════════════════
@@ -228,7 +234,7 @@ class DatasetProjectDetail(BaseModel):
 
 # --- 检测任务 ---
 
-class DetectionTaskResponse(BaseModel):
+class DetectionTaskResponse(_ModelFieldsBase):
     """检测任务响应"""
     id: int
     user_id: int
@@ -295,12 +301,12 @@ class DetectionStatistics(BaseModel):
 
 # --- 训练任务 ---
 
-class TrainingTaskCreate(BaseModel):
+class TrainingTaskCreate(_ModelFieldsBase):
     """创建训练任务"""
     scene_id: int = Field(..., description="关联场景 ID")
     dataset_project_id: Optional[int] = Field(None, description="训练数据集项目ID")
     model_name: str = Field(default="yolov11n", description="基础模型")
-    epochs: int = Field(default=100, ge=10, le=500, description="训练轮数")
+    epochs: int = Field(default=100, ge=1, le=500, description="训练轮数")
     img_size: int = Field(default=640, description="图像尺寸")
     batch_size: int = Field(default=16, ge=1, le=64, description="批次大小")
     device: str = Field(default="0", description="训练设备")
@@ -309,7 +315,7 @@ class TrainingTaskCreate(BaseModel):
     augment_config: Optional[dict] = Field(None, description="数据增强配置")
 
 
-class TrainingTaskResponse(BaseModel):
+class TrainingTaskResponse(_ModelFieldsBase):
     """训练任务响应"""
     id: int
     user_id: int
@@ -353,7 +359,7 @@ class TrainingMetricResponse(BaseModel):
 
 # --- 模型版本 ---
 
-class ModelVersionBrief(BaseModel):
+class ModelVersionBrief(_ModelFieldsBase):
     """模型版本简要信息"""
     id: int
     version: str
@@ -367,7 +373,7 @@ class ModelVersionBrief(BaseModel):
         from_attributes = True
 
 
-class ModelVersionResponse(BaseModel):
+class ModelVersionResponse(_ModelFieldsBase):
     """模型版本详情"""
     id: int
     scene_id: int
@@ -393,7 +399,7 @@ class ModelVersionResponse(BaseModel):
         from_attributes = True
 
 
-class ModelVersionCreate(BaseModel):
+class ModelVersionCreate(_ModelFieldsBase):
     """手动上传模型版本"""
     scene_id: int
     version: str = Field(..., description="版本号")
@@ -402,7 +408,25 @@ class ModelVersionCreate(BaseModel):
     description: Optional[str] = None
 
 
-# --- 模型评估（Day 7 新增）---
+# --- 模型评估与导出 ---
+
+class ModelValidateRequest(BaseModel):
+    """模型评估请求"""
+    split: str = Field(default="val", description="评估数据集划分: val / test / train")
+    conf: float = Field(default=0.001, description="置信度阈值")
+    iou: float = Field(default=0.6, description="NMS IoU 阈值")
+
+
+class ModelValidateResponse(_ModelFieldsBase):
+    """模型评估响应"""
+    task_id: int
+    task_uuid: str
+    split: str
+    overall: dict
+    per_class: dict
+    model_version_id: Optional[int] = None
+    model_version: Optional[str] = None
+
 
 class EvaluateRequest(BaseModel):
     """模型评估请求"""
@@ -419,9 +443,29 @@ class EvaluateResponse(BaseModel):
     per_class: dict
 
 
-# --- 模型导出（Day 7 新增）---
+class ModelExportRequest(BaseModel):
+    """模型导出请求"""
+    version: Optional[str] = Field(None, description="版本号（如 v1.0.0，不传则自动生成）")
+    description: Optional[str] = Field(None, description="版本描述/变更说明")
+    set_default: bool = Field(default=False, description="是否设为该场景的默认模型")
+    upload_minio: bool = Field(default=True, description="是否上传到 MinIO")
 
-class ModelExportResponse(BaseModel):
+
+class ModelExportResponse(_ModelFieldsBase):
+    """模型导出响应"""
+    model_version_id: int
+    version: str
+    model_name: str
+    model_path: str
+    export_dir: str
+    minio_url: Optional[str] = None
+    file_size: Optional[int] = None
+    evaluation: dict
+    is_default: bool
+    message: str
+
+
+class LegacyModelExportResponse(_ModelFieldsBase):
     """模型导出响应"""
     id: int
     version: str
@@ -430,7 +474,6 @@ class ModelExportResponse(BaseModel):
     file_size: Optional[int] = None
     map50: Optional[float] = None
     map50_95: Optional[float] = None
-
 
 # ══════════════════════════════════════════════════════════════
 # 四、智能体对话
