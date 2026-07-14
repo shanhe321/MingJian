@@ -11,7 +11,13 @@ Pydantic 请求/响应模型
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class _ModelFieldsBase(BaseModel):
+    """允许模型业务字段使用 ``model_`` 前缀。"""
+
+    model_config = ConfigDict(protected_namespaces=())
 
 
 # ══════════════════════════════════════════════════════════════
@@ -228,7 +234,7 @@ class DatasetProjectDetail(BaseModel):
 
 # --- 检测任务 ---
 
-class DetectionTaskResponse(BaseModel):
+class DetectionTaskResponse(_ModelFieldsBase):
     """检测任务响应"""
     id: int
     user_id: int
@@ -295,7 +301,7 @@ class DetectionStatistics(BaseModel):
 
 # --- 训练任务 ---
 
-class TrainingTaskCreate(BaseModel):
+class TrainingTaskCreate(_ModelFieldsBase):
     """创建训练任务"""
     scene_id: int = Field(..., description="关联场景 ID")
     dataset_project_id: Optional[int] = Field(None, description="训练数据集项目ID")
@@ -309,7 +315,7 @@ class TrainingTaskCreate(BaseModel):
     augment_config: Optional[dict] = Field(None, description="数据增强配置")
 
 
-class TrainingTaskResponse(BaseModel):
+class TrainingTaskResponse(_ModelFieldsBase):
     """训练任务响应"""
     id: int
     user_id: int
@@ -353,7 +359,7 @@ class TrainingMetricResponse(BaseModel):
 
 # --- 模型版本 ---
 
-class ModelVersionBrief(BaseModel):
+class ModelVersionBrief(_ModelFieldsBase):
     """模型版本简要信息"""
     id: int
     version: str
@@ -367,7 +373,7 @@ class ModelVersionBrief(BaseModel):
         from_attributes = True
 
 
-class ModelVersionResponse(BaseModel):
+class ModelVersionResponse(_ModelFieldsBase):
     """模型版本详情"""
     id: int
     scene_id: int
@@ -393,7 +399,7 @@ class ModelVersionResponse(BaseModel):
         from_attributes = True
 
 
-class ModelVersionCreate(BaseModel):
+class ModelVersionCreate(_ModelFieldsBase):
     """手动上传模型版本"""
     scene_id: int
     version: str = Field(..., description="版本号")
@@ -411,7 +417,7 @@ class ModelValidateRequest(BaseModel):
     iou: float = Field(default=0.6, description="NMS IoU 阈值")
 
 
-class ModelValidateResponse(BaseModel):
+class ModelValidateResponse(_ModelFieldsBase):
     """模型评估响应"""
     task_id: int
     task_uuid: str
@@ -445,7 +451,7 @@ class ModelExportRequest(BaseModel):
     upload_minio: bool = Field(default=True, description="是否上传到 MinIO")
 
 
-class ModelExportResponse(BaseModel):
+class ModelExportResponse(_ModelFieldsBase):
     """模型导出响应"""
     model_version_id: int
     version: str
@@ -459,7 +465,7 @@ class ModelExportResponse(BaseModel):
     message: str
 
 
-class LegacyModelExportResponse(BaseModel):
+class LegacyModelExportResponse(_ModelFieldsBase):
     """模型导出响应"""
     id: int
     version: str
