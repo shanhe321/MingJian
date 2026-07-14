@@ -106,6 +106,99 @@
       </el-row>
     </el-card>
 
+    <!-- ── 模型操作栏 ── -->
+    <el-card
+      v-if="selectedTask && selectedTask.status === 'completed'"
+      class="action-card"
+      shadow="never"
+    >
+      <template #header>
+        <div class="card-header">
+          <span>模型操作</span>
+        </div>
+      </template>
+
+      <el-space wrap>
+        <el-button type="primary" @click="validateModel" :loading="validating">
+          评估模型
+        </el-button>
+        <el-button type="success" @click="showExportDialog = true">
+          导出模型
+        </el-button>
+        <el-button @click="downloadModel">下载权重</el-button>
+        <el-button type="warning" @click="showPredictDialog = true">
+          测试验证
+        </el-button>
+      </el-space>
+    </el-card>
+
+    <!-- ── 评估报告面板 ── -->
+    <el-card v-if="evalReport" class="eval-card" shadow="never">
+      <template #header>
+        <div class="card-header">
+          <span>
+            评估报告
+            <el-tag size="small" style="margin-left: 8px">
+              {{ evalReport.split === 'val' ? '验证集' : evalReport.split === 'test' ? '测试集' : '训练集' }}
+            </el-tag>
+          </span>
+        </div>
+      </template>
+
+      <!-- 整体指标 -->
+      <el-row :gutter="16" class="metric-cards">
+        <el-col :span="6" v-for="item in evalMetricCards" :key="item.label">
+          <el-card shadow="hover" class="metric-item">
+            <div class="metric-value" :style="{ color: item.color }">
+              {{ item.value }}
+            </div>
+            <div class="metric-label">{{ item.label }}</div>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <!-- 每类 AP 表格 -->
+      <el-table
+        :data="perClassData"
+        stripe
+        style="width: 100%; margin-top: 16px"
+        :row-class-name="tableRowClassName"
+      >
+        <el-table-column prop="class_name" label="类别" width="200" />
+        <el-table-column prop="ap50" label="AP@50" width="120">
+          <template #default="{ row }">
+            <span :style="{ color: row.ap50 < 0.5 ? '#f56c6c' : '#67c23a' }">
+              {{ (row.ap50 * 100).toFixed(1) }}%
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="ap50_95" label="AP@50-95" width="120">
+          <template #default="{ row }">
+            {{ (row.ap50_95 * 100).toFixed(1) }}%
+          </template>
+        </el-table-column>
+        <el-table-column label="评价">
+          <template #default="{ row }">
+            <el-tag
+              :type="row.ap50 >= 0.7 ? 'success' : row.ap50 >= 0.5 ? 'warning' : 'danger'"
+              size="small"
+            >
+              {{ row.ap50 >= 0.7 ? '优秀' : row.ap50 >= 0.5 ? '良好' : '需改进' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
+        <template #empty>
+          <el-empty description="暂无每类 AP 数据" />
+        </template>
+      </el-table>
+
+      <div v-if="weakClasses.length" class="weak-hint">
+        <el-icon><WarningFilled /></el-icon>
+        弱势类别（AP@50 &lt; 0.5）：{{ weakClasses.join('、') }}，建议增加这些类别的训练样本或检查标注质量
+      </div>
+    </el-card>
+
     <!-- ── 新建训练任务对话框 ── -->
     <el-dialog
       v-model="showCreateDialog"
@@ -181,13 +274,135 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- ── 导出模型对话框 ── -->
+    <el-dialog v-model="showExportDialog" title="导出模型" width="500px">
+      <el-form :model="exportForm" label-width="100px">
+        <el-form-item label="版本号">
+          <el-input v-model="exportForm.version" placeholder="自动生成（如 v1.0.0）" />
+        </el-form-item>
+        <el-form-item label="版本描述">
+          <el-input
+            v-model="exportForm.description"
+            type="textarea"
+            :rows="3"
+            placeholder="描述本次训练的主要变更..."
+          />
+        </el-form-item>
+        <el-form-item label="设为默认">
+          <el-switch v-model="exportForm.set_default" />
+          <span style="margin-left: 8px; color: #909399; font-size: 12px">
+            设为该场景的默认检测模型
+          </span>
+        </el-form-item>
+        <el-form-item label="上传 MinIO">
+          <el-switch v-model="exportForm.upload_minio" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showExportDialog = false">取消</el-button>
+        <el-button type="primary" @click="exportModel" :loading="exporting">
+          确认导出
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ── 测试图验证对话框 ── -->
+    <el-dialog
+      v-model="showPredictDialog"
+      title="测试图验证"
+      width="900px"
+      @close="resetPredictState"
+    >
+      <el-row :gutter="16">
+        <!-- 左侧：上传 + 配置 -->
+        <el-col :span="10">
+          <el-upload
+            class="predict-upload"
+            drag
+            action=""
+            :auto-upload="false"
+            :on-change="handlePredictFileChange"
+            accept="image/*"
+            :limit="1"
+          >
+            <el-icon style="font-size: 40px; color: #909399"><UploadFilled /></el-icon>
+            <div>拖拽图片到此处，或 <em>点击上传</em></div>
+            <template #tip>
+              <div class="el-upload__tip">支持 JPG/PNG/BMP 格式，请使用不在训练集/验证集中的全新图片</div>
+            </template>
+          </el-upload>
+
+          <el-form label-width="80px" style="margin-top: 16px">
+            <el-form-item label="置信度">
+              <el-slider v-model="predictConf" :min="0.05" :max="0.95" :step="0.05" show-input />
+            </el-form-item>
+            <el-form-item label="IoU">
+              <el-slider v-model="predictIou" :min="0.1" :max="0.9" :step="0.05" show-input />
+            </el-form-item>
+          </el-form>
+
+          <el-button
+            type="primary"
+            style="width: 100%; margin-top: 8px"
+            @click="runPredict"
+            :loading="predicting"
+            :disabled="!predictFile"
+          >
+            开始检测
+          </el-button>
+        </el-col>
+
+        <!-- 右侧：检测结果 -->
+        <el-col :span="14">
+          <div v-if="predictResult">
+            <img
+              :src="`data:image/jpeg;base64,${predictResult.annotated_image}`"
+              style="width: 100%; border-radius: 8px; margin-bottom: 12px"
+            />
+            <el-descriptions :column="2" border size="small">
+              <el-descriptions-item label="检测目标数">
+                {{ predictResult.total_objects }}
+              </el-descriptions-item>
+              <el-descriptions-item label="推理耗时">
+                {{ predictResult.inference_time }}ms
+              </el-descriptions-item>
+            </el-descriptions>
+
+            <el-table
+              :data="predictResult.detections"
+              stripe
+              size="small"
+              style="margin-top: 8px; max-height: 200px"
+            >
+              <el-table-column prop="class_name" label="类别" width="120" />
+              <el-table-column label="置信度" width="100">
+                <template #default="{ row }">
+                  {{ (row.confidence * 100).toFixed(1) }}%
+                </template>
+              </el-table-column>
+              <el-table-column label="位置">
+                <template #default="{ row }">
+                  [{{ row.bbox.map((v) => v.toFixed(0)).join(', ') }}]
+                </template>
+              </el-table-column>
+
+              <template #empty>
+                <el-empty description="未检测到目标" :image-size="60" />
+              </template>
+            </el-table>
+          </div>
+          <el-empty v-else description="上传图片并点击检测" />
+        </el-col>
+      </el-row>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus, Refresh } from '@element-plus/icons-vue'
+import { Plus, Refresh, UploadFilled, WarningFilled } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import request from '@/utils/request'
 
@@ -198,11 +413,36 @@ const selectedTask = ref(null)
 const showCreateDialog = ref(false)
 const creating = ref(false)
 
+// ── 模型评估相关状态 ──
+const evalReport = ref(null)
+const validating = ref(false)
+
+// ── 模型导出相关状态 ──
+const showExportDialog = ref(false)
+const exporting = ref(false)
+const exportForm = ref({
+  version: '',
+  description: '',
+  set_default: true,
+  upload_minio: true,
+})
+
+// ── 测试图验证相关状态 ──
+const showPredictDialog = ref(false)
+const predicting = ref(false)
+const predictFile = ref(null)
+const predictConf = ref(0.25)
+const predictIou = ref(0.45)
+const predictResult = ref(null)
+
 // ── 图表引用 ──
 const lossChartRef = ref(null)
 const mapChartRef = ref(null)
 let lossChart = null
 let mapChart = null
+
+// ── 当前任务的完整指标历史（用于图表 + 最新指标卡片）──
+const taskMetrics = ref([])
 
 // ── 轮询定时器 ──
 let pollTimer = null
@@ -223,7 +463,7 @@ const trainForm = ref(defaultTrainForm())
 // ── 计算属性：最新指标卡片 ──
 const metricCards = computed(() => {
   if (!selectedTask.value) return []
-  const metrics = selectedTask.value.metrics || []
+  const metrics = taskMetrics.value
   const m = metrics.length > 0 ? metrics[metrics.length - 1] : null
   if (!m) {
     return [
@@ -244,6 +484,54 @@ const metricCards = computed(() => {
     { label: 'mAP@50-95', value: m.map50_95 != null ? (m.map50_95 * 100).toFixed(1) + '%' : '-' },
   ]
 })
+
+// ── 计算属性：评估报告整体指标卡片 ──
+const evalMetricCards = computed(() => {
+  if (!evalReport.value) return []
+  const o = evalReport.value.overall || {}
+  return [
+    {
+      label: 'Precision',
+      value: o.precision != null ? (o.precision * 100).toFixed(1) + '%' : '-',
+      color: o.precision > 0.7 ? '#67c23a' : '#e6a23c',
+    },
+    {
+      label: 'Recall',
+      value: o.recall != null ? (o.recall * 100).toFixed(1) + '%' : '-',
+      color: o.recall > 0.7 ? '#67c23a' : '#e6a23c',
+    },
+    {
+      label: 'mAP@50',
+      value: o.map50 != null ? (o.map50 * 100).toFixed(1) + '%' : '-',
+      color: o.map50 > 0.5 ? '#67c23a' : '#f56c6c',
+    },
+    {
+      label: 'mAP@50-95',
+      value: o.map50_95 != null ? (o.map50_95 * 100).toFixed(1) + '%' : '-',
+      color: o.map50_95 > 0.3 ? '#67c23a' : '#f56c6c',
+    },
+  ]
+})
+
+// ── 计算属性：每类 AP 表格数据（按 AP@50 降序）──
+const perClassData = computed(() => {
+  if (!evalReport.value || !evalReport.value.per_class) return []
+  return Object.entries(evalReport.value.per_class)
+    .map(([name, m]) => ({
+      class_name: name,
+      ap50: m.ap50,
+      ap50_95: m.ap50_95,
+    }))
+    .sort((a, b) => b.ap50 - a.ap50)
+})
+
+// ── 计算属性：弱势类别（AP@50 < 0.5）──
+const weakClasses = computed(() => perClassData.value.filter((c) => c.ap50 < 0.5).map((c) => c.class_name))
+
+// ── 每类 AP 表格行样式 ──
+function tableRowClassName({ row }) {
+  return row.ap50 < 0.5 ? 'weak-row' : ''
+}
 
 // ── 状态映射 ──
 function statusType(status) {
@@ -273,9 +561,9 @@ async function fetchTasks() {
   loadingTasks.value = true
   try {
     // 注意：request 拦截器已经把响应解包为 response.data，这里拿到的就是接口返回体本身
-    // 后端 GET /api/training/list 直接返回任务数组（不做 items 包装）
-    const res = await request.get('/training/list')
-    taskList.value = res || []
+    // 后端 GET /api/training/tasks 返回 { total, items }
+    const res = await request.get('/training/tasks')
+    taskList.value = res?.items || []
   } catch (e) {
     console.error('获取任务列表失败', e)
   } finally {
@@ -286,6 +574,9 @@ async function fetchTasks() {
 // ── 选择任务并开始监控 ──
 async function selectTask(task) {
   selectedTask.value = task
+  evalReport.value = null
+  taskMetrics.value = []
+  resetPredictState()
   await nextTick()
   initCharts()
   await fetchStatus()
@@ -306,17 +597,20 @@ function initCharts() {
 }
 
 // ── 获取训练状态与指标并更新图表 ──
-// 后端 GET /api/training/status/{id} 一次性返回任务信息 + 全部 epoch 指标（metrics 数组）
+// 后端 GET /api/training/status/{id} 返回 { task, latest_metric, is_running }
+// 完整的每轮指标历史需另外调用 GET /api/training/metrics/{id}
 async function fetchStatus() {
   if (!selectedTask.value) return
   const taskId = selectedTask.value.id
   try {
     const statusRes = await request.get(`/training/status/${taskId}`)
-    if (statusRes) {
-      selectedTask.value = { ...selectedTask.value, ...statusRes }
+    if (statusRes?.task) {
+      selectedTask.value = { ...selectedTask.value, ...statusRes.task }
     }
 
-    const metrics = statusRes?.metrics || []
+    const metricsRes = await request.get(`/training/metrics/${taskId}`)
+    const metrics = metricsRes?.metrics || []
+    taskMetrics.value = metrics
     if (metrics.length > 0) {
       updateCharts(metrics)
     }
@@ -434,23 +728,121 @@ function stopPolling() {
 }
 
 // ── 创建训练任务 ──
-// 后端 POST /api/training/create 直接返回完整的 TrainingTaskResponse
+// 后端 POST /api/training/start 返回 { id, task_uuid, status, model_name, epochs, message }
 async function createTask() {
   creating.value = true
   try {
-    const res = await request.post('/training/create', trainForm.value)
-    ElMessage.success(`训练任务已创建：${res?.task_uuid?.slice(0, 8) || ''}`)
+    const res = await request.post('/training/start', trainForm.value)
+    ElMessage.success(res?.message || `训练任务已创建：${res?.task_uuid?.slice(0, 8) || ''}`)
     showCreateDialog.value = false
     trainForm.value = defaultTrainForm()
     await fetchTasks()
-    // 响应体本身就是完整任务对象，可直接选中并开始监控
+    // 响应体字段较少，从最新任务列表中找到完整任务对象再选中监控
     if (res?.id) {
-      selectTask(res)
+      const fullTask = taskList.value.find((t) => t.id === res.id) || res
+      selectTask(fullTask)
     }
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '创建训练任务失败')
   } finally {
     creating.value = false
+  }
+}
+
+// ── 评估模型 ──
+// 后端 POST /api/training/validate/{task_id} 会执行 model.val()，CPU 上耗时较长，超时调大到 5 分钟
+async function validateModel() {
+  if (!selectedTask.value) return
+  validating.value = true
+  try {
+    const taskId = selectedTask.value.id
+    const res = await request.post(
+      `/training/validate/${taskId}`,
+      { split: 'val', conf: 0.001, iou: 0.6 },
+      { timeout: 300000 }
+    )
+    evalReport.value = res
+    ElMessage.success(`评估完成: mAP50=${(res.overall.map50 * 100).toFixed(1)}%`)
+  } catch (e) {
+    // 响应拦截器已统一提示错误信息
+  } finally {
+    validating.value = false
+  }
+}
+
+// ── 导出模型 ──
+async function exportModel() {
+  if (!selectedTask.value) return
+  exporting.value = true
+  try {
+    const taskId = selectedTask.value.id
+    const res = await request.post(`/training/export/${taskId}`, exportForm.value)
+    ElMessage.success(res?.message || '模型导出成功')
+    showExportDialog.value = false
+  } catch (e) {
+    // 响应拦截器已统一提示错误信息
+  } finally {
+    exporting.value = false
+  }
+}
+
+// ── 下载模型权重 ──
+async function downloadModel() {
+  if (!selectedTask.value) return
+  try {
+    const taskId = selectedTask.value.id
+    const token = localStorage.getItem('rsod_token') || ''
+    const response = await fetch(`/api/training/download/${taskId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!response.ok) throw new Error('下载失败')
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `best_${selectedTask.value.task_uuid}.pt`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('模型下载已开始')
+  } catch (e) {
+    ElMessage.error('模型下载失败')
+  }
+}
+
+// ── 测试图文件选择 ──
+function handlePredictFileChange(file) {
+  predictFile.value = file.raw
+  predictResult.value = null
+}
+
+// ── 重置测试验证对话框状态 ──
+function resetPredictState() {
+  predictFile.value = null
+  predictResult.value = null
+}
+
+// ── 运行测试图预测 ──
+async function runPredict() {
+  if (!predictFile.value || !selectedTask.value) return
+  predicting.value = true
+  try {
+    const taskId = selectedTask.value.id
+    const formData = new FormData()
+    formData.append('file', predictFile.value)
+    formData.append('task_id', taskId)
+    formData.append('conf', predictConf.value)
+    formData.append('iou', predictIou.value)
+
+    // 不手动设置 Content-Type，交由浏览器自动生成 multipart boundary
+    const res = await request.post('/training/predict', formData)
+    predictResult.value = res
+    ElMessage.success(`检测完成: 发现 ${res.total_objects} 个目标`)
+  } catch (e) {
+    // 响应拦截器已统一提示错误信息
+  } finally {
+    predicting.value = false
   }
 }
 
@@ -518,7 +910,38 @@ onBeforeUnmount(() => {
 }
 
 .task-list-card,
-.monitor-card {
+.monitor-card,
+.action-card,
+.eval-card {
   margin-bottom: 20px;
+}
+
+.predict-upload {
+  width: 100%;
+}
+
+.predict-upload :deep(.el-upload-dragger) {
+  width: 100%;
+  padding: 20px;
+}
+
+.weak-hint {
+  margin-top: 16px;
+  padding: 10px 12px;
+  background-color: #fef0f0;
+  color: #f56c6c;
+  border-radius: 4px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+:deep(.weak-row) {
+  background-color: #fef0f0 !important;
+}
+
+:deep(.weak-row td) {
+  color: #f56c6c !important;
 }
 </style>
