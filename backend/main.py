@@ -9,6 +9,8 @@ from app.core.exceptions import register_exception_handlers
 from app.middleware.request_logger import RequestLogMiddleware
 
 from app.api.auth import router as auth_router
+from app.api.chat import router as chat_router
+from app.api.detection import router as detection_router
 from app.api.health import router as health_router
 from app.api.training import router as training_router
 
@@ -65,6 +67,8 @@ app.add_middleware(RequestLogMiddleware)
 app.include_router(auth_router)
 app.include_router(health_router)
 app.include_router(training_router)
+app.include_router(chat_router)
+app.include_router(detection_router)
 
 @app.get("/")
 def root():
