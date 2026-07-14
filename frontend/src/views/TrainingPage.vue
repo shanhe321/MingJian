@@ -26,7 +26,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="model_name" label="模型" width="110" />
-        <el-table-column prop="device" label="设备" width="80" />
+        <el-table-column label="设备" width="80">
+          <template #default="{ row }">
+            {{ row.device || '-' }}
+          </template>
+        </el-table-column>
         <el-table-column label="进度" width="180">
           <template #default="{ row }">
             <el-progress
@@ -49,19 +53,10 @@
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="创建时间" width="180" />
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="100" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" text @click="selectTask(row)">
               监控
-            </el-button>
-            <el-button
-              v-if="row.status === 'running'"
-              size="small"
-              type="danger"
-              text
-              @click="stopTask(row.id)"
-            >
-              停止
             </el-button>
           </template>
         </el-table-column>
@@ -84,7 +79,7 @@
           </span>
           <div class="monitor-info">
             <span>模型: {{ selectedTask.model_name }}</span>
-            <span>设备: {{ selectedTask.device }}</span>
+            <span>设备: {{ selectedTask.device || '-' }}</span>
             <span>Epoch: {{ selectedTask.current_epoch }}/{{ selectedTask.epochs }}</span>
           </div>
         </div>
@@ -191,7 +186,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Plus, Refresh } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import request from '@/utils/request'
@@ -228,7 +223,8 @@ const trainForm = ref(defaultTrainForm())
 // ── 计算属性：最新指标卡片 ──
 const metricCards = computed(() => {
   if (!selectedTask.value) return []
-  const m = selectedTask.value.latest_metric
+  const metrics = selectedTask.value.metrics || []
+  const m = metrics.length > 0 ? metrics[metrics.length - 1] : null
   if (!m) {
     return [
       { label: 'Epoch', value: `${selectedTask.value.current_epoch ?? 0}/${selectedTask.value.epochs ?? '-'}` },
@@ -277,8 +273,9 @@ async function fetchTasks() {
   loadingTasks.value = true
   try {
     // 注意：request 拦截器已经把响应解包为 response.data，这里拿到的就是接口返回体本身
-    const res = await request.get('/training/tasks')
-    taskList.value = res?.items || []
+    // 后端 GET /api/training/list 直接返回任务数组（不做 items 包装）
+    const res = await request.get('/training/list')
+    taskList.value = res || []
   } catch (e) {
     console.error('获取任务列表失败', e)
   } finally {
@@ -291,7 +288,7 @@ async function selectTask(task) {
   selectedTask.value = task
   await nextTick()
   initCharts()
-  await fetchMetrics()
+  await fetchStatus()
   startPolling()
 }
 
@@ -308,26 +305,18 @@ function initCharts() {
   }
 }
 
-// ── 获取训练指标并更新图表 ──
-async function fetchMetrics() {
+// ── 获取训练状态与指标并更新图表 ──
+// 后端 GET /api/training/status/{id} 一次性返回任务信息 + 全部 epoch 指标（metrics 数组）
+async function fetchStatus() {
   if (!selectedTask.value) return
   const taskId = selectedTask.value.id
   try {
-    const [metricsRes, statusRes] = await Promise.all([
-      request.get(`/training/metrics/${taskId}`),
-      request.get(`/training/status/${taskId}`),
-    ])
-
-    // 更新任务状态：后端返回 { task, latest_metric, is_running }
-    if (statusRes?.task) {
-      selectedTask.value = {
-        ...selectedTask.value,
-        ...statusRes.task,
-        latest_metric: statusRes.latest_metric,
-      }
+    const statusRes = await request.get(`/training/status/${taskId}`)
+    if (statusRes) {
+      selectedTask.value = { ...selectedTask.value, ...statusRes }
     }
 
-    const metrics = metricsRes?.metrics || []
+    const metrics = statusRes?.metrics || []
     if (metrics.length > 0) {
       updateCharts(metrics)
     }
@@ -337,7 +326,7 @@ async function fetchMetrics() {
       stopPolling()
     }
   } catch (e) {
-    console.error('获取训练指标失败', e)
+    console.error('获取训练状态失败', e)
   }
 }
 
@@ -432,7 +421,7 @@ function startPolling() {
   stopPolling()
   pollTimer = setInterval(() => {
     if (selectedTask.value) {
-      fetchMetrics()
+      fetchStatus()
     }
   }, 5000) // 每 5 秒轮询一次
 }
@@ -445,39 +434,23 @@ function stopPolling() {
 }
 
 // ── 创建训练任务 ──
+// 后端 POST /api/training/create 直接返回完整的 TrainingTaskResponse
 async function createTask() {
   creating.value = true
   try {
-    const res = await request.post('/training/start', trainForm.value)
+    const res = await request.post('/training/create', trainForm.value)
     ElMessage.success(`训练任务已创建：${res?.task_uuid?.slice(0, 8) || ''}`)
     showCreateDialog.value = false
     trainForm.value = defaultTrainForm()
     await fetchTasks()
-    // 自动选中新创建的任务
+    // 响应体本身就是完整任务对象，可直接选中并开始监控
     if (res?.id) {
-      const newTask = taskList.value.find((t) => t.id === res.id)
-      if (newTask) selectTask(newTask)
+      selectTask(res)
     }
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '创建训练任务失败')
   } finally {
     creating.value = false
-  }
-}
-
-// ── 停止训练任务 ──
-async function stopTask(taskId) {
-  try {
-    await ElMessageBox.confirm('确定要停止当前训练任务吗？训练进度将被保留。', '确认停止', {
-      type: 'warning',
-    })
-    await request.post(`/training/stop/${taskId}`)
-    ElMessage.success('训练任务已停止')
-    await fetchTasks()
-  } catch (e) {
-    if (e !== 'cancel') {
-      ElMessage.error('停止训练失败')
-    }
   }
 }
 
