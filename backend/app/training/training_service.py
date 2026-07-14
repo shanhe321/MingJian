@@ -439,8 +439,8 @@ class TrainingService:
         db.commit()
         return {"task_id": task_id, "status": "cancelled", "message": "训练任务已停止"}
 
+    @staticmethod
     def validate_model(
-        self,
         db: Session,
         task_id: int,
         split: str = "val",
@@ -465,7 +465,7 @@ class TrainingService:
         if task.status != "completed":
             return {"error": f"训练任务状态为 {task.status}，只有已完成的任务才能评估"}
 
-        weights_path = self._weights_path(task.task_uuid)
+        weights_path = TrainingService._weights_path(task.task_uuid)
         if not weights_path.exists():
             return {"error": f"模型权重不存在: {weights_path}"}
         data_yaml = Path(task.data_yaml) if task.data_yaml else Path(task.dataset_path or "") / "data.yaml"
@@ -490,7 +490,7 @@ class TrainingService:
                 device="cpu",
                 save_json=True,
                 plots=True,
-                project=str(self._absolute_path(settings.TRAIN_OUTPUT_DIR)),
+                project=str(TrainingService._absolute_path(settings.TRAIN_OUTPUT_DIR)),
                 name=f"task_{task.task_uuid}",
                 exist_ok=True,
                 verbose=False,
@@ -560,8 +560,8 @@ class TrainingService:
             logger.error("模型评估异常: task_id=%d, error=%s", task_id, exc, exc_info=True)
             return {"error": f"评估失败: {exc}"}
 
+    @staticmethod
     def export_model(
-        self,
         db: Session,
         task_id: int,
         version: str | None = None,
@@ -584,7 +584,7 @@ class TrainingService:
             return {"error": "训练任务不存在"}
         if task.status != "completed":
             return {"error": f"训练任务状态为 {task.status}，只有已完成的任务才能导出"}
-        weights_path = self._weights_path(task.task_uuid)
+        weights_path = TrainingService._weights_path(task.task_uuid)
         if not weights_path.exists():
             return {"error": f"模型权重不存在: {weights_path}"}
         scene = db.query(DetectionScene).filter(DetectionScene.id == task.scene_id).first()
@@ -601,7 +601,7 @@ class TrainingService:
         shutil.copy2(weights_path, exported_weight)
         logger.info("模型文件已复制: %s → %s", weights_path, exported_weight)
 
-        task_output = self._task_output_dir(task.task_uuid)
+        task_output = TrainingService._task_output_dir(task.task_uuid)
         for name in ("confusion_matrix.png", "PR_curve.png", "F1_curve.png", "results.png"):
             source = task_output / name
             if source.exists():
@@ -618,10 +618,14 @@ class TrainingService:
                 if rows:
                     row = {str(key).strip(): value for key, value in rows[-1].items()}
                     overall = {
-                        "precision": self._safe_float(row.get("metrics/precision(B)")),
-                        "recall": self._safe_float(row.get("metrics/recall(B)")),
-                        "map50": self._safe_float(row.get("metrics/mAP50(B)")),
-                        "map50_95": self._safe_float(row.get("metrics/mAP50-95(B)")),
+                        "precision": TrainingService._safe_float(
+                            row.get("metrics/precision(B)")
+                        ),
+                        "recall": TrainingService._safe_float(row.get("metrics/recall(B)")),
+                        "map50": TrainingService._safe_float(row.get("metrics/mAP50(B)")),
+                        "map50_95": TrainingService._safe_float(
+                            row.get("metrics/mAP50-95(B)")
+                        ),
                     }
                     if existing and existing.per_class_ap:
                         per_class = existing.per_class_ap
@@ -735,19 +739,31 @@ class TrainingService:
             "message": f"模型已导出为版本 {version}",
         }
 
-    def get_model_download_path(self, db: Session, task_id: int) -> dict:
+    @staticmethod
+    def get_model_download_path(db: Session, task_id: int) -> dict:
+        """获取训练任务的模型权重文件路径（用于下载）"""
         task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
         if task is None:
             return {"error": "训练任务不存在"}
-        if task.status != "completed":
-            return {"error": "训练任务未完成"}
-        weights_path = self._weights_path(task.task_uuid)
-        if not weights_path.exists():
-            return {"error": "模型权重文件不存在"}
-        return {
-            "file_path": str(weights_path),
-            "filename": f"{task.model_name}_{task.task_uuid}_best.pt",
-        }
+
+        weights_dir = TrainingService._task_output_dir(task.task_uuid) / "weights"
+        best_path = weights_dir / "best.pt"
+        if best_path.exists():
+            return {
+                "file_path": str(best_path),
+                "filename": f"best_{task.task_uuid}.pt",
+                "file_size": best_path.stat().st_size,
+            }
+
+        last_path = weights_dir / "last.pt"
+        if last_path.exists():
+            return {
+                "file_path": str(last_path),
+                "filename": f"last_{task.task_uuid}.pt",
+                "file_size": last_path.stat().st_size,
+            }
+
+        return {"error": "模型权重文件不存在"}
 
     @staticmethod
     def get_model_path(db: Session, task_id: int) -> str:
