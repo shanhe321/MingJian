@@ -55,6 +55,60 @@ def test_original_training_service_entrypoints_are_preserved():
         assert hasattr(service, name)
 
 
+def test_model_download_prefers_best_weight(tmp_path: Path, monkeypatch):
+    weights = tmp_path / "weights"
+    weights.mkdir()
+    (weights / "best.pt").write_bytes(b"best")
+    (weights / "last.pt").write_bytes(b"last-weight")
+    monkeypatch.setattr(TrainingService, "_task_output_dir", lambda task_uuid: tmp_path)
+
+    result = TrainingService.get_model_download_path(_download_database("a1b2c3d4"), 1)
+
+    assert result == {
+        "file_path": str(weights / "best.pt"),
+        "filename": "best_a1b2c3d4.pt",
+        "file_size": 4,
+    }
+
+
+def test_model_download_falls_back_to_last_weight(tmp_path: Path, monkeypatch):
+    weights = tmp_path / "weights"
+    weights.mkdir()
+    (weights / "last.pt").write_bytes(b"last-weight")
+    monkeypatch.setattr(TrainingService, "_task_output_dir", lambda task_uuid: tmp_path)
+
+    result = TrainingService.get_model_download_path(_download_database("a1b2c3d4"), 1)
+
+    assert result == {
+        "file_path": str(weights / "last.pt"),
+        "filename": "last_a1b2c3d4.pt",
+        "file_size": 11,
+    }
+
+
+def test_model_download_reports_missing_weights(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(TrainingService, "_task_output_dir", lambda task_uuid: tmp_path)
+
+    result = TrainingService.get_model_download_path(_download_database("a1b2c3d4"), 1)
+
+    assert result == {"error": "模型权重文件不存在"}
+
+
+def _download_database(task_uuid: str):
+    class Query:
+        def filter(self, *args):
+            return self
+
+        def first(self):
+            return SimpleNamespace(task_uuid=task_uuid)
+
+    class Database:
+        def query(self, model):
+            return Query()
+
+    return Database()
+
+
 def test_training_status_matches_documented_shape():
     task = SimpleNamespace(
         id=1,

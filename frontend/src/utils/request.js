@@ -13,9 +13,6 @@ import router from '@/router'
 const request = axios.create({
   baseURL: '/api',          // 配合 Vite proxy，实际请求转发到后端
   timeout: 30000,           // 请求超时 30 秒
-  headers: {
-    'Content-Type': 'application/json',
-  },
 })
 
 // ── 请求拦截器 ──────────────────────────────────────
