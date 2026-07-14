@@ -428,21 +428,6 @@ class ModelValidateResponse(_ModelFieldsBase):
     model_version: Optional[str] = None
 
 
-class EvaluateRequest(BaseModel):
-    """模型评估请求"""
-    split: str = Field(default="val", description="评估数据集划分：val/test")
-    conf: float = Field(default=0.25, ge=0.001, le=1.0, description="置信度阈值")
-    iou: float = Field(default=0.45, ge=0.1, le=1.0, description="NMS IoU 阈值")
-
-
-class EvaluateResponse(BaseModel):
-    """模型评估响应"""
-    task_id: int
-    split: str
-    overall: dict
-    per_class: dict
-
-
 class ModelExportRequest(BaseModel):
     """模型导出请求"""
     version: Optional[str] = Field(None, description="版本号（如 v1.0.0，不传则自动生成）")
@@ -464,16 +449,6 @@ class ModelExportResponse(_ModelFieldsBase):
     is_default: bool
     message: str
 
-
-class LegacyModelExportResponse(_ModelFieldsBase):
-    """模型导出响应"""
-    id: int
-    version: str
-    model_name: str
-    model_path: str
-    file_size: Optional[int] = None
-    map50: Optional[float] = None
-    map50_95: Optional[float] = None
 
 # ══════════════════════════════════════════════════════════════
 # 四、智能体对话
