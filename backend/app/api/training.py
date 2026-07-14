@@ -153,6 +153,14 @@ async def validate_model(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    对已完成训练的模型执行评估
+
+    - 在验证集或测试集上运行 model.val()
+    - 返回 mAP、Precision、Recall 等指标
+    - 返回每类 AP 分析
+    - 自动创建/更新 ModelVersion 记录
+    """
     request = request or ModelValidateRequest()
     result = training_service.validate_model(
         db=db,
@@ -163,6 +171,12 @@ async def validate_model(
     )
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
+    logger.info(
+        "用户 %s 评估模型: task_id=%d, mAP50=%.4f",
+        current_user.username,
+        task_id,
+        result.get("overall", {}).get("map50", 0),
+    )
     return result
 
 
@@ -173,6 +187,15 @@ async def export_model(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    导出训练好的模型为正式版本
+
+    - 复制 best.pt 到 models/ 目录
+    - 运行评估获取最终指标
+    - 保存评估报告 JSON
+    - 创建 ModelVersion 记录
+    - 可选上传到 MinIO
+    """
     request = request or ModelExportRequest()
     result = training_service.export_model(
         db=db,
@@ -184,6 +207,12 @@ async def export_model(
     )
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
+    logger.info(
+        "用户 %s 导出模型: task_id=%d, version=%s",
+        current_user.username,
+        task_id,
+        result.get("version"),
+    )
     return result
 
 
@@ -193,9 +222,20 @@ async def download_model(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    下载训练好的模型权重文件（best.pt）
+
+    返回文件下载响应，浏览器直接保存文件
+    """
     result = training_service.get_model_download_path(db, task_id)
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
+    logger.info(
+        "用户 %s 下载模型: task_id=%d, file=%s",
+        current_user.username,
+        task_id,
+        result["filename"],
+    )
     return FileResponse(
         path=result["file_path"],
         media_type="application/octet-stream",
@@ -212,6 +252,14 @@ async def predict_test_image(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    上传测试图片，使用训练好的模型进行预测
+
+    用于快速验证模型训练效果：
+    1. 上传一张不在训练集/验证集中的测试图片
+    2. 使用 best.pt 进行推理
+    3. 返回检测结果（标注图 + 检测统计）
+    """
     allowed_types = {"image/jpeg", "image/png", "image/bmp", "image/webp"}
     if file.content_type not in allowed_types:
         raise HTTPException(

@@ -444,9 +444,19 @@ class TrainingService:
         db: Session,
         task_id: int,
         split: str = "val",
-        conf: float = 0.001,
-        iou: float = 0.6,
+        conf: float = 0.25,
+        iou: float = 0.45,
     ) -> dict:
+        """
+        对已完成训练的模型执行验证集评估
+
+        流程：
+          1. 查找训练任务对应的 best.pt 路径
+          2. 加载模型并运行 model.val()
+          3. 解析评估结果
+          4. 将评估指标写入 ModelVersion 表
+          5. 返回结构化评估报告
+        """
         from ultralytics import YOLO
 
         task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
@@ -461,6 +471,13 @@ class TrainingService:
         data_yaml = Path(task.data_yaml) if task.data_yaml else Path(task.dataset_path or "") / "data.yaml"
         if not data_yaml.exists():
             return {"error": "data.yaml 不存在"}
+
+        logger.info(
+            "开始模型评估: task_id=%d, weights=%s, split=%s",
+            task_id,
+            weights_path,
+            split,
+        )
 
         try:
             model = YOLO(str(weights_path))
@@ -524,6 +541,12 @@ class TrainingService:
             model_version.per_class_ap = per_class
             db.commit()
             db.refresh(model_version)
+            logger.info(
+                "模型评估完成: task_id=%d, mAP50=%.4f, mAP50-95=%.4f",
+                task_id,
+                overall["map50"],
+                overall["map50_95"],
+            )
             return {
                 "task_id": task_id,
                 "task_uuid": task.task_uuid,
@@ -546,6 +569,16 @@ class TrainingService:
         set_default: bool = False,
         upload_minio: bool = True,
     ) -> dict:
+        """
+        导出训练好的模型为正式版本
+
+        流程：
+          1. 复制 best.pt 到 models/ 目录
+          2. 运行评估获取最终指标
+          3. 保存评估报告 JSON
+          4. 创建 ModelVersion 记录
+          5. 可选上传到 MinIO
+        """
         task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
         if task is None:
             return {"error": "训练任务不存在"}
@@ -558,47 +591,61 @@ class TrainingService:
         if scene is None:
             return {"error": "关联场景不存在"}
 
-        existing = db.query(ModelVersion).filter(ModelVersion.training_task_id == task_id).first()
         if not version:
-            if existing is not None:
-                version = existing.version
-            else:
-                count = db.query(ModelVersion).filter(ModelVersion.scene_id == task.scene_id).count()
-                version = f"v{count + 1}.0.0"
+            count = db.query(ModelVersion).filter(ModelVersion.scene_id == task.scene_id).count()
+            version = f"v{count + 1}.0.0"
 
         export_dir = BACKEND_DIR / "models" / f"{scene.name}_{version}"
         export_dir.mkdir(parents=True, exist_ok=True)
         exported_weight = export_dir / "best.pt"
         shutil.copy2(weights_path, exported_weight)
+        logger.info("模型文件已复制: %s → %s", weights_path, exported_weight)
 
         task_output = self._task_output_dir(task.task_uuid)
         for name in ("confusion_matrix.png", "PR_curve.png", "F1_curve.png", "results.png"):
-            candidates = (task_output / name, task_output / "eval" / name)
-            source = next((path for path in candidates if path.exists()), None)
-            if source is not None:
+            source = task_output / name
+            if source.exists():
                 shutil.copy2(source, export_dir / name)
 
         overall: dict[str, float | None] = {}
+        per_class: dict = {}
+        existing = db.query(ModelVersion).filter(ModelVersion.training_task_id == task_id).first()
         csv_path = task_output / "results.csv"
         if csv_path.exists():
-            with csv_path.open("r", encoding="utf-8-sig", newline="") as file:
-                rows = list(csv.DictReader(file))
-            if rows:
-                row = {str(key).strip(): value for key, value in rows[-1].items()}
-                overall = {
-                    "precision": self._safe_float(row.get("metrics/precision(B)")),
-                    "recall": self._safe_float(row.get("metrics/recall(B)")),
-                    "map50": self._safe_float(row.get("metrics/mAP50(B)")),
-                    "map50_95": self._safe_float(row.get("metrics/mAP50-95(B)")),
-                }
-        per_class = existing.per_class_ap if existing and existing.per_class_ap else {}
-        if not overall and existing is not None:
+            try:
+                with csv_path.open("r", encoding="utf-8-sig", newline="") as file:
+                    rows = list(csv.DictReader(file))
+                if rows:
+                    row = {str(key).strip(): value for key, value in rows[-1].items()}
+                    overall = {
+                        "precision": self._safe_float(row.get("metrics/precision(B)")),
+                        "recall": self._safe_float(row.get("metrics/recall(B)")),
+                        "map50": self._safe_float(row.get("metrics/mAP50(B)")),
+                        "map50_95": self._safe_float(row.get("metrics/mAP50-95(B)")),
+                    }
+                    if existing and existing.per_class_ap:
+                        per_class = existing.per_class_ap
+                    logger.info(
+                        "从 results.csv 读取评估指标: task_id=%d, mAP50=%.4f",
+                        task_id,
+                        overall.get("map50") or 0,
+                    )
+            except Exception as exc:
+                logger.warning("从 results.csv 读取指标失败: %s", exc)
+
+        if (not overall or overall.get("map50") is None) and existing is not None:
             overall = {
                 "precision": existing.precision,
                 "recall": existing.recall,
                 "map50": existing.map50,
                 "map50_95": existing.map50_95,
             }
+            per_class = existing.per_class_ap or {}
+            logger.info(
+                "使用已有 ModelVersion 指标: task_id=%d, mAP50=%.4f",
+                task_id,
+                existing.map50 or 0,
+            )
 
         report = {
             "version": version,
@@ -628,6 +675,7 @@ class TrainingService:
                 minio_url = MinIOClient().upload_file(
                     f"models/{scene.name}/{version}/best.pt", str(exported_weight)
                 )
+                logger.info("模型已上传 MinIO: %s", minio_url)
             except Exception as exc:
                 logger.warning("MinIO 上传失败（不影响本地导出）: %s", exc)
 
@@ -661,6 +709,12 @@ class TrainingService:
             model_version.is_default = True
         db.commit()
         db.refresh(model_version)
+        logger.info(
+            "模型导出完成: scene=%s, version=%s, mAP50=%.4f",
+            scene.name,
+            version,
+            overall.get("map50") or 0,
+        )
 
         return {
             "model_version_id": model_version.id,
