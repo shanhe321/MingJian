@@ -18,6 +18,10 @@
           <div v-if="msg.images && msg.images.length" class="message-attachments-grid">
             <img v-for="(src, i) in msg.images" :key="i" :src="src" alt="附件图片" />
           </div>
+          <!-- 视频附件（视频检测） -->
+          <div v-if="msg.videoUrl" class="message-attachment">
+            <video :src="msg.videoUrl" controls preload="metadata"></video>
+          </div>
         </div>
 
         <!-- AI 消息 -->
@@ -49,7 +53,9 @@
       <el-button :disabled="agentStore.isLoading" @click="handleQuickDetect('batch')">
         📁 批量/ZIP
       </el-button>
-      <el-button disabled>🎬 视频</el-button>
+      <el-button :disabled="agentStore.isLoading" @click="handleVideoDetect">
+        🎬 视频
+      </el-button>
       <el-button disabled>📹 摄像头</el-button>
     </div>
 
@@ -112,7 +118,7 @@
  *   - 快捷操作栏（单图/批量/视频/摄像头）
  *   - 中断当前对话
  */
-import { detectBatch, detectSingle, detectZip } from '@/api/detection'
+import { detectBatch, detectSingle, detectVideo, detectZip, getVideoStatus } from '@/api/detection'
 import DetectionResultCard from '@/components/DetectionResultCard.vue'
 import { useAgentStore } from '@/stores/agent'
 import { renderMarkdown } from '@/utils/markdown'
@@ -435,6 +441,121 @@ async function handleQuickDetect(type) {
   }
 }
 
+/**
+ * 视频检测流程：
+ * 1. 用户点击 "🎬 视频" 按钮
+ * 2. 弹出文件选择框（限制视频格式）
+ * 3. 选择视频后，上传到后端
+ * 4. 后端返回 task_id，前端开始轮询进度
+ * 5. 处理完成后，展示关键帧结果卡片
+ */
+async function handleVideoDetect() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'video/mp4,video/avi,video/quicktime,video/x-msvideo'
+  input.onchange = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    // 校验文件大小（50MB）
+    const maxSize = 50 * 1024 * 1024
+    if (file.size > maxSize) {
+      ElMessage.warning('视频文件不能超过 50MB')
+      return
+    }
+
+    // 创建视频的 Blob URL 用于预览
+    const videoUrl = URL.createObjectURL(file)
+
+    // 添加用户消息
+    agentStore.addMessage({
+      role: 'user',
+      content: `[视频检测] ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)}MB)`,
+      videoUrl,
+    })
+
+    // 添加加载占位
+    agentStore.addMessage({
+      role: 'assistant',
+      content: '正在上传视频...',
+      loading: true,
+    })
+    scrollToBottom()
+
+    // 上传视频
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      const uploadResult = await detectVideo(formData)
+      const taskId = uploadResult.task_id
+
+      // 更新加载消息
+      const lastMsg = agentStore.messages[agentStore.messages.length - 1]
+      lastMsg.content = '视频已上传，正在处理中...'
+
+      // 开始轮询进度
+      await pollVideoProgress(taskId)
+    } catch (err) {
+      console.error('[视频检测失败]', err)
+      const lastMsg = agentStore.messages[agentStore.messages.length - 1]
+      lastMsg.content = `视频检测失败：${err.response?.data?.detail || err.message || '请重试'}`
+      lastMsg.loading = false
+      lastMsg.error = true
+    }
+    scrollToBottom()
+  }
+  input.click()
+}
+
+/**
+ * 轮询视频检测进度
+ * @param {number} taskId - 视频检测任务 ID
+ * @param {number} intervalMs - 轮询间隔（毫秒）
+ * @param {number} maxAttempts - 最大轮询次数（防止无限轮询）
+ */
+async function pollVideoProgress(taskId, intervalMs = 1500, maxAttempts = 120) {
+  const lastMsg = agentStore.messages[agentStore.messages.length - 1]
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const status = await getVideoStatus(taskId)
+
+      if (status.status === 'completed') {
+        const result = status.result || {}
+        lastMsg.content = status.message || `视频检测完成！共发现 ${result.total_objects ?? 0} 个目标。`
+        lastMsg.detectionResult = { ...result, type: 'video' }
+        lastMsg.loading = false
+        scrollToBottom()
+        return
+      }
+
+      if (status.status === 'failed') {
+        lastMsg.content = `视频检测失败：${status.message || '未知错误'}`
+        lastMsg.loading = false
+        lastMsg.error = true
+        scrollToBottom()
+        return
+      }
+
+      // 仍在处理中，更新进度提示
+      const progress = status.progress ?? 0
+      lastMsg.content = `视频处理中...${progress ? ` (${progress}%)` : ''}`
+      scrollToBottom()
+    } catch (err) {
+      console.error('[视频进度查询失败]', err)
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+
+  // 超过最大轮询次数仍未完成
+  lastMsg.content = '视频处理超时，请稍后在历史记录中查看结果'
+  lastMsg.loading = false
+  lastMsg.error = true
+  scrollToBottom()
+}
+
 onMounted(() => {
   // 页面加载时显示欢迎消息
   if (agentStore.messages.length === 0) {
@@ -621,6 +742,13 @@ onMounted(() => {
 
   img {
     max-width: 200px;
+    border-radius: $border-radius-sm;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+  }
+
+  video {
+    max-width: 240px;
+    max-height: 180px;
     border-radius: $border-radius-sm;
     border: 1px solid rgba(255, 255, 255, 0.4);
   }

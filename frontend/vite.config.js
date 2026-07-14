@@ -27,8 +27,15 @@ export default defineConfig({
     port: 5173,
     open: true,
     proxy: {
+      // REST API 代理
       "/api": {
         target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      // WebSocket 代理（摄像头实时检测，必须设置 ws: true）
+      "/api/detection/camera": {
+        target: "ws://localhost:8000",
+        ws: true,
         changeOrigin: true,
       },
     },
