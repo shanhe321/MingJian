@@ -472,11 +472,13 @@ class TrainingService:
         if not data_yaml.exists():
             return {"error": "data.yaml 不存在"}
 
+        evaluation_device = task.device or "cpu"
         logger.info(
-            "开始模型评估: task_id=%d, weights=%s, split=%s",
+            "开始模型评估: task_id=%d, weights=%s, split=%s, device=%s",
             task_id,
             weights_path,
             split,
+            evaluation_device,
         )
 
         try:
@@ -487,7 +489,7 @@ class TrainingService:
                 conf=conf,
                 iou=iou,
                 imgsz=task.img_size,
-                device="cpu",
+                device=evaluation_device,
                 save_json=True,
                 plots=True,
                 project=str(TrainingService._absolute_path(settings.TRAIN_OUTPUT_DIR)),
