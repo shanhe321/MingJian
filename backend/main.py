@@ -7,6 +7,7 @@ from app.config.settings import settings
 
 from app.core.exceptions import register_exception_handlers
 from app.middleware.request_logger import RequestLogMiddleware
+from app.middleware.rate_limiter import RateLimiterMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
@@ -62,6 +63,9 @@ app.add_middleware(
 
 # 2. 请求日志中间件（在 CORS 之后执行）
 app.add_middleware(RequestLogMiddleware)
+
+# 3. API 速率限制中间件
+app.add_middleware(RateLimiterMiddleware)
 
 # ── 注册路由 ─────────────────────────────────────────
 app.include_router(auth_router)
