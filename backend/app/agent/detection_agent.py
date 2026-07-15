@@ -3,7 +3,7 @@
 
 职责：
   - 创建 LangChain ReAct Agent
-  - 绑定检测相关工具（单图/批量/ZIP）
+  - 绑定检测相关工具（单图/批量/ZIP/视频）
   - 处理 SSE 流式输出 Agent 的思考过程和结果
 """
 
@@ -71,7 +71,41 @@ def detect_zip_images_file(zip_path: str, conf: float = 0.25) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
-DETECTION_TOOLS = [detect_single_image, detect_batch_images, detect_zip_images_file]
+@tool
+def detect_video_file(
+    video_path: str,
+    conf: float = 0.25,
+    frame_sample_rate: int = 5,
+) -> str:
+    """
+    检测视频文件中的目标物体。对视频进行帧采样后逐帧检测。
+
+    Args:
+        video_path: 视频文件路径（mp4/avi/mov 等）
+        conf: 置信度阈值，默认 0.25
+        frame_sample_rate: 帧采样间隔，每 N 帧取 1 帧，默认 5
+
+    Returns:
+        JSON 字符串，包含视频检测结果（关键帧、目标统计、时长信息）
+    """
+    result = detection_service.detect_video(
+        video_path,
+        conf=conf,
+        frame_sample_rate=frame_sample_rate,
+    )
+    if "key_frames" in result:
+        for frame in result["key_frames"]:
+            frame.pop("annotated_image_base64", None)
+    result.pop("annotated_video_url", None)
+    return json.dumps(result, ensure_ascii=False)
+
+
+DETECTION_TOOLS = [
+    detect_single_image,
+    detect_batch_images,
+    detect_zip_images_file,
+    detect_video_file,
+]
 
 
 def create_llm():
@@ -104,23 +138,26 @@ class DetectionAgent:
     def __init__(self):
         self.llm = create_llm()
 
-        system_prompt = """你是一个专业的目标检测助手。你可以帮用户检测图片中的目标物体。
+        system_prompt = """你是一个专业的目标检测助手。你可以帮用户检测图片或视频中的目标物体。
 
 重要规则：
 - 当用户消息中包含 [附件图片路径: xxx] 时，xxx 就是图片的服务器路径，你应直接使用它调用检测工具
+- 当用户消息中包含 [附件视频路径: xxx] 时，xxx 就是视频的服务器路径，你应直接使用它调用视频检测工具
 - 不要要求用户再次提供路径，直接使用附件中给出的路径
 - 对于单张图片，调用 detect_single_image 工具
 - 对于多张图片或 ZIP 文件，调用 detect_batch_images 或 detect_zip_images_file 工具
+- 对于视频文件，调用 detect_video_file 工具
 
 工作流程：
 1. 理解用户意图
-2. 如果有附件图片路径，直接调用检测工具
+2. 如果有附件路径，直接调用对应检测工具
 3. 调用工具获取检测结果
 4. 用自然语言总结检测结果
 
 回复格式要求：
 - 先报告检测到的目标总数
 - 列出各类别的数量统计
+- 对于视频检测，还要报告视频时长和处理的帧数
 - 如果有标注图，告知用户可以在结果卡片中查看
 - 简洁专业，不要过度解释"""
 
