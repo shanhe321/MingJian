@@ -179,6 +179,13 @@ class DetectionService:
         """检测单张图片。"""
         db = SessionLocal()
         try:
+            if user_id and not scene_id:
+                default_scene = db.query(DetectionScene).first()
+                if default_scene:
+                    scene_id = default_scene.id
+                else:
+                    logger.warning("数据库中没有可用的检测场景")
+
             model = self._get_model(scene_id)
             results = model.predict(
                 source=image_path,
