@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -53,6 +54,86 @@ def test_original_training_service_entrypoints_are_preserved():
         "get_model_path",
     ):
         assert hasattr(service, name)
+
+
+def test_model_validation_uses_training_device(tmp_path: Path, monkeypatch):
+    weights_path = tmp_path / "weights" / "best.pt"
+    weights_path.parent.mkdir()
+    weights_path.write_bytes(b"weights")
+    data_yaml = tmp_path / "data.yaml"
+    data_yaml.write_text("names: [defect]\n", encoding="utf-8")
+
+    task = SimpleNamespace(
+        id=1,
+        task_uuid="a1b2c3d4",
+        status="completed",
+        data_yaml=str(data_yaml),
+        dataset_path=str(tmp_path),
+        img_size=640,
+        device="0",
+        scene_id=1,
+        model_name="yolov11n",
+    )
+    scene = SimpleNamespace(id=1, name="defect")
+    model_version = SimpleNamespace(
+        id=2,
+        version="v1.0.0",
+        per_class_ap=None,
+        precision=None,
+        recall=None,
+        map50=None,
+        map50_95=None,
+    )
+
+    class Query:
+        def __init__(self, item):
+            self.item = item
+
+        def filter(self, *args):
+            return self
+
+        def first(self):
+            return self.item
+
+    class Database:
+        def query(self, model):
+            items = {
+                "TrainingTask": task,
+                "DetectionScene": scene,
+                "ModelVersion": model_version,
+            }
+            return Query(items[model.__name__])
+
+        def commit(self):
+            pass
+
+        def refresh(self, item):
+            pass
+
+    captured = {}
+
+    class YOLO:
+        names = {0: "defect"}
+
+        def __init__(self, path):
+            captured["weights"] = path
+
+        def val(self, **kwargs):
+            captured.update(kwargs)
+            box = SimpleNamespace(mp=0.9, mr=0.8, map50=0.85, map=0.6, ap=None)
+            return SimpleNamespace(box=box)
+
+    monkeypatch.setitem(sys.modules, "ultralytics", SimpleNamespace(YOLO=YOLO))
+    monkeypatch.setattr(
+        TrainingService,
+        "_weights_path",
+        classmethod(lambda cls, task_uuid: weights_path),
+    )
+
+    result = TrainingService.validate_model(Database(), task_id=1)
+
+    assert "error" not in result
+    assert captured["device"] == "0"
 
 
 def test_model_download_prefers_best_weight(tmp_path: Path, monkeypatch):
