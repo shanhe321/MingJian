@@ -19,7 +19,7 @@ def test_chat_and_detection_routes_match_guide():
         for route in app.routes
         if route.path.startswith("/api/chat")
         or route.path.startswith("/api/detection")
-        for method in route.methods
+        for method in getattr(route, "methods", set())
     }
     assert routes == {
         ("POST", "/api/chat/upload"),
@@ -27,8 +27,14 @@ def test_chat_and_detection_routes_match_guide():
         ("POST", "/api/detection/single"),
         ("POST", "/api/detection/batch"),
         ("POST", "/api/detection/zip"),
+        ("POST", "/api/detection/video"),
         ("GET", "/api/detection/status/{task_id}"),
+        ("GET", "/api/detection/video/status/{task_id}"),
     }
+    websocket_routes = {
+        route.path for route in app.routes if route.__class__.__name__ == "APIWebSocketRoute"
+    }
+    assert "/api/detection/camera" in websocket_routes
 
 
 def test_detection_agent_binds_documented_tools():
@@ -36,6 +42,7 @@ def test_detection_agent_binds_documented_tools():
         "detect_single_image",
         "detect_batch_images",
         "detect_zip_images_file",
+        "detect_video_file",
     }
     assert detection_agent.executor.max_iterations == 5
 
@@ -215,6 +222,119 @@ def test_detect_zip_filters_images_and_returns_batch_metadata(tmp_path: Path, mo
     assert all(not Path(path).exists() for path in captured_paths)
 
 
+def test_detect_video_returns_sampled_results(tmp_path: Path, monkeypatch):
+    service_module = importlib.import_module("app.services.detection_service")
+    task = SimpleNamespace(
+        id=12,
+        status="processing",
+        total_images=0,
+        total_objects=0,
+        total_inference_time=0,
+        completed_at=None,
+        error_message=None,
+    )
+
+    class Query:
+        def filter(self, *args):
+            return self
+
+        def first(self):
+            return task
+
+    class Database:
+        closed = False
+
+        def query(self, model):
+            return Query()
+
+        def add(self, item):
+            pass
+
+        def commit(self):
+            pass
+
+        def close(self):
+            self.closed = True
+
+    database = Database()
+    frames = [
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        np.full((8, 8, 3), 255, dtype=np.uint8),
+    ]
+
+    class Capture:
+        released = False
+
+        def isOpened(self):
+            return True
+
+        def get(self, prop):
+            values = {
+                service_module.cv2.CAP_PROP_FRAME_COUNT: 2,
+                service_module.cv2.CAP_PROP_FPS: 2.0,
+                service_module.cv2.CAP_PROP_FRAME_WIDTH: 8,
+                service_module.cv2.CAP_PROP_FRAME_HEIGHT: 8,
+            }
+            return values[prop]
+
+        def read(self):
+            return (True, frames.pop(0)) if frames else (False, None)
+
+        def release(self):
+            self.released = True
+
+    class Writer:
+        def write(self, frame):
+            pass
+
+        def release(self):
+            pass
+
+    prediction = SimpleNamespace(boxes=[], speed={"inference": 4.0})
+
+    class Model:
+        names = {0: "defect"}
+
+        def predict(self, **kwargs):
+            return [prediction]
+
+    class MinIO:
+        def upload_file(self, object_name, file_path):
+            assert object_name == "detections/12/annotated_video.mp4"
+            assert Path(file_path).exists()
+            return "http://minio/annotated_video.mp4"
+
+    def fake_run(command, **kwargs):
+        Path(command[-1]).write_bytes(b"h264")
+
+    monkeypatch.setattr(service_module, "SessionLocal", lambda: database)
+    monkeypatch.setattr(service_module.cv2, "VideoCapture", lambda path: Capture())
+    monkeypatch.setattr(service_module.cv2, "VideoWriter", lambda *args: Writer())
+    monkeypatch.setattr(service_module.cv2, "VideoWriter_fourcc", lambda *args: 0)
+    monkeypatch.setattr(service_module, "MinIOClient", MinIO)
+    monkeypatch.setattr(service_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(service_module.shutil, "which", lambda name: "ffmpeg")
+    monkeypatch.setattr(
+        DetectionService,
+        "_get_model",
+        staticmethod(lambda scene_id=None: Model()),
+    )
+
+    result = DetectionService().detect_video(
+        str(tmp_path / "video.mp4"),
+        frame_sample_rate=1,
+        max_frames=2,
+        task_id=12,
+    )
+
+    assert result["processed_frames"] == 2
+    assert result["total_frames"] == 2
+    assert result["fps"] == 2.0
+    assert result["annotated_video_url"] == "http://minio/annotated_video.mp4"
+    assert task.status == "completed"
+    assert database.closed is True
+
+
 def test_single_detection_api_uses_uploaded_file(client, monkeypatch):
     captured = {}
 
@@ -266,3 +386,37 @@ def test_chat_stream_returns_sse_events(client, monkeypatch):
     assert response.headers["content-type"].startswith("text/event-stream")
     assert 'data: {"type": "text_chunk", "content": "你好"}\n\n' in response.text
     assert response.text.endswith("data: [DONE]\n\n")
+
+
+def test_camera_websocket_processes_frame(client, monkeypatch):
+    prediction = SimpleNamespace(
+        boxes=[],
+        speed={"inference": 5.0},
+        plot=lambda: np.zeros((8, 8, 3), dtype=np.uint8),
+    )
+
+    class Model:
+        names = {0: "defect"}
+
+        def predict(self, **kwargs):
+            return [prediction]
+
+    monkeypatch.setattr(detection_service, "_get_model", lambda scene_id=None: Model())
+    _, image_buffer = importlib.import_module("cv2").imencode(
+        ".jpg",
+        np.zeros((8, 8, 3), dtype=np.uint8),
+    )
+    frame_base64 = base64.b64encode(image_buffer).decode("utf-8")
+
+    with client.websocket_connect("/api/detection/camera") as websocket:
+        websocket.send_json({"type": "config", "mode": "cpu", "conf": 0.25})
+        config = websocket.receive_json()
+        assert config["type"] == "config_ok"
+
+        websocket.send_json({"type": "frame", "data": frame_base64})
+        result = websocket.receive_json()
+        assert result["type"] == "result"
+        assert result["object_count"] == 0
+        assert result["inference_time"] == 5.0
+        assert base64.b64decode(result["annotated_frame"])
+        websocket.send_json({"type": "close"})
