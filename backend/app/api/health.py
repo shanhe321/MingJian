@@ -97,3 +97,42 @@ async def health_check_detail():
             "services": services,
         },
     }
+
+
+@router.get("/api/health/redis")
+async def redis_debug():
+    """查看 Redis 中存储的全部调试数据。"""
+    try:
+        from app.storage.redis_client import redis_client
+
+        data = redis_client.get_all_data()
+        return {
+            "code": 200,
+            "message": "ok",
+            "data": {
+                "use_redis": redis_client.info()["use_redis"],
+                "key_count": len(data),
+                "data": data,
+            },
+        }
+    except Exception as exc:
+        return {
+            "code": 500,
+            "message": f"获取 Redis 数据失败: {str(exc)}",
+            "data": None,
+        }
+
+
+@router.get("/api/health/redis/info")
+async def redis_info():
+    """查看 Redis 客户端状态。"""
+    try:
+        from app.storage.redis_client import redis_client
+
+        return {"code": 200, "message": "ok", "data": redis_client.info()}
+    except Exception as exc:
+        return {
+            "code": 500,
+            "message": f"获取 Redis 状态失败: {str(exc)}",
+            "data": None,
+        }
