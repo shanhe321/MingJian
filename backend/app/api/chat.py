@@ -9,11 +9,13 @@
 import json
 import os
 import tempfile
+import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.agent.detection_agent import detection_agent
+from app.agent.memory import conversation_memory
 from app.api.auth import get_current_user
 from app.core.logger import get_logger
 
@@ -31,7 +33,7 @@ async def upload_image(
     current_user=Depends(get_current_user),
 ):
     """上传图片文件到服务端临时目录。"""
-    filename = f"{os.getpid()}_{file.filename}"
+    filename = f"{os.getpid()}_{os.path.basename(file.filename or 'upload.jpg')}"
     file_path = os.path.join(UPLOAD_DIR, filename)
 
     content = await file.read()
@@ -56,6 +58,9 @@ async def chat_stream(
     if not message:
         raise HTTPException(status_code=400, detail="消息内容不能为空")
 
+    if not session_id:
+        session_id = str(uuid.uuid4())[:8]
+
     logger.info(
         "用户 %s 发起对话: message=%s, image=%s, session=%s",
         current_user.username,
@@ -68,7 +73,10 @@ async def chat_stream(
         try:
             async for event in detection_agent.chat_stream(
                 message=message,
+                user_id=current_user.id,
+                session_id=session_id,
                 image_path=image_path,
+                user_is_superuser=getattr(current_user, "is_superuser", False),
             ):
                 event_data = json.dumps(event, ensure_ascii=False)
                 yield f"data: {event_data}\n\n"
@@ -92,3 +100,21 @@ async def chat_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/sessions", summary="获取会话列表")
+async def get_sessions(current_user=Depends(get_current_user)):
+    """获取当前用户的 Redis 会话 ID 列表。"""
+    return {"sessions": conversation_memory.get_sessions(current_user.id)}
+
+
+@router.post("/clear", summary="清空会话历史")
+async def clear_session(
+    request: Request,
+    current_user=Depends(get_current_user),
+):
+    """清空当前用户的指定 Redis 会话历史。"""
+    body = await request.json()
+    session_id = body.get("session_id", "default")
+    conversation_memory.clear_session(current_user.id, session_id)
+    return {"message": f"会话 {session_id} 已清空"}
