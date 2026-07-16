@@ -117,6 +117,57 @@ def test_detect_single_returns_annotations_and_statistics(monkeypatch):
     assert database.closed is True
 
 
+def test_detect_single_uses_default_scene_for_history(monkeypatch):
+    service_module = importlib.import_module("app.services.detection_service")
+    captured = {}
+
+    class Query:
+        def first(self):
+            return SimpleNamespace(id=4)
+
+    class Database:
+        closed = False
+
+        def query(self, model):
+            return Query()
+
+        def close(self):
+            self.closed = True
+
+    database = Database()
+    prediction = SimpleNamespace(
+        boxes=[],
+        speed={"inference": 2.0},
+        plot=lambda: np.zeros((8, 8, 3), dtype=np.uint8),
+    )
+
+    class Model:
+        names = {}
+
+        def predict(self, **kwargs):
+            return [prediction]
+
+    def fake_get_model(scene_id=None):
+        captured["model_scene_id"] = scene_id
+        return Model()
+
+    def fake_save(**kwargs):
+        captured.update(kwargs)
+        return {"task_id": 15, "annotated_image_url": "http://minio/result.jpg"}
+
+    monkeypatch.setattr(service_module, "SessionLocal", lambda: database)
+    monkeypatch.setattr(DetectionService, "_get_model", staticmethod(fake_get_model))
+    monkeypatch.setattr(DetectionService, "_save_task_and_results", staticmethod(fake_save))
+
+    result = DetectionService().detect_single("sample.jpg", user_id=7)
+
+    assert captured["model_scene_id"] == 4
+    assert captured["scene_id"] == 4
+    assert captured["user_id"] == 7
+    assert result["task_id"] == 15
+    assert database.closed is True
+
+
 def test_detect_batch_returns_aggregate_results(monkeypatch):
     service_module = importlib.import_module("app.services.detection_service")
 
