@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -17,7 +18,13 @@ from app.agent.prompts import (
 )
 from app.agent.supervisor import SupervisorAgent
 from app.agent.tools.analysis_tool import ANALYSIS_TOOLS
-from app.agent.tools.detection_tool import DETECTION_TOOLS
+from app.agent.tools.detection_tool import (
+    DETECTION_TOOLS,
+    detect_batch_images,
+    detect_single_image,
+    detect_video_file,
+    detect_zip_images_file,
+)
 from app.agent.tools.knowledge_tool import KNOWLEDGE_TOOLS
 
 
@@ -137,3 +144,87 @@ def test_sub_agents_bind_only_their_documented_tools(monkeypatch):
     assert [tool.name for tool in detection.tools] == [tool.name for tool in DETECTION_TOOLS]
     assert [tool.name for tool in analysis.tools] == [tool.name for tool in ANALYSIS_TOOLS]
     assert [tool.name for tool in qa.tools] == [tool.name for tool in KNOWLEDGE_TOOLS]
+
+
+@pytest.mark.parametrize(
+    ("tool", "service_method", "tool_input", "service_result"),
+    [
+        (
+            detect_single_image,
+            "detect_single",
+            {"image_path": "input.jpg"},
+            {
+                "total_objects": 1,
+                "annotated_image_base64": "single-image-payload",
+                "annotated_image_url": "http://minio/result.jpg",
+            },
+        ),
+        (
+            detect_batch_images,
+            "detect_batch",
+            {"image_paths": ["one.jpg", "two.jpg"]},
+            {
+                "total_images": 2,
+                "annotated_images": [
+                    {
+                        "image_path": "one.jpg",
+                        "annotated_image_base64": "batch-image-payload",
+                    }
+                ],
+            },
+        ),
+        (
+            detect_zip_images_file,
+            "detect_zip",
+            {"zip_path": "images.zip"},
+            {
+                "source": "zip",
+                "annotated_images": [
+                    {
+                        "image_path": "one.jpg",
+                        "annotated_image_base64": "zip-image-payload",
+                    }
+                ],
+            },
+        ),
+        (
+            detect_video_file,
+            "detect_video",
+            {"video_path": "input.mp4"},
+            {
+                "processed_frames": 1,
+                "key_frames": [
+                    {
+                        "frame_index": 0,
+                        "annotated_image_base64": "video-frame-payload",
+                    }
+                ],
+                "annotated_video_url": "http://minio/result.mp4",
+            },
+        ),
+    ],
+)
+def test_detection_tools_do_not_send_base64_payloads_to_llm(
+    monkeypatch,
+    tool,
+    service_method,
+    tool_input,
+    service_result,
+):
+    detection_tool_module = __import__(
+        "app.agent.tools.detection_tool",
+        fromlist=["detection_service"],
+    )
+    monkeypatch.setattr(
+        getattr(detection_tool_module, "detection_service"),
+        service_method,
+        lambda *args, **kwargs: service_result,
+    )
+
+    serialized = tool.invoke(tool_input)
+    result = json.loads(serialized)
+
+    assert "base64" not in serialized.lower()
+    assert "payload" not in serialized
+    if service_method == "detect_single":
+        assert result["annotated_image_url"] == "http://minio/result.jpg"
