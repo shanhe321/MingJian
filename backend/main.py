@@ -15,6 +15,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.detection import router as detection_router
 from app.api.health import router as health_router
 from app.api.history import router as history_router
+from app.api.knowledge import router as knowledge_router
 from app.api.training import router as training_router
 from app.api.user import router as user_router
 
@@ -79,6 +80,7 @@ app.include_router(detection_router)
 app.include_router(dashboard_router)
 app.include_router(history_router)
 app.include_router(user_router)
+app.include_router(knowledge_router)
 
 @app.get("/")
 def root():
