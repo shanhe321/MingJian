@@ -24,6 +24,8 @@ def test_chat_and_detection_routes_match_guide():
     assert routes == {
         ("POST", "/api/chat/upload"),
         ("POST", "/api/chat/stream"),
+        ("GET", "/api/chat/sessions"),
+        ("POST", "/api/chat/clear"),
         ("POST", "/api/detection/single"),
         ("POST", "/api/detection/batch"),
         ("POST", "/api/detection/zip"),
@@ -44,7 +46,8 @@ def test_detection_agent_binds_documented_tools():
         "detect_zip_images_file",
         "detect_video_file",
     }
-    assert detection_agent.executor.max_iterations == 5
+    assert len(detection_agent.all_tools) == 8
+    assert detection_agent.executor.max_iterations == 8
 
 
 def test_llm_settings_match_guide_defaults():
@@ -418,15 +421,25 @@ def test_single_detection_api_uses_uploaded_file(client, monkeypatch):
 
 
 def test_chat_stream_returns_sse_events(client, monkeypatch):
-    async def fake_chat_stream(message, image_path):
+    async def fake_chat_stream(
+        message,
+        user_id,
+        session_id,
+        image_path,
+        user_is_superuser,
+    ):
         assert message == "你好"
+        assert user_id == 9
+        assert len(session_id) == 8
         assert image_path is None
+        assert user_is_superuser is False
         yield {"type": "text_chunk", "content": "你好"}
 
     monkeypatch.setattr(detection_agent, "chat_stream", fake_chat_stream)
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
         id=9,
         username="tester",
+        is_superuser=False,
     )
     try:
         response = client.post("/api/chat/stream", json={"message": "你好"})

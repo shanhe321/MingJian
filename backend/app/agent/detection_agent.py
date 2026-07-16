@@ -1,128 +1,44 @@
-"""
-检测智能体 — ReAct Agent + 检测工具绑定
+"""多工具检测 Agent：RAG、统计查询、Redis 记忆与增强 SSE。"""
 
-职责：
-  - 创建 LangChain ReAct Agent
-  - 绑定检测相关工具（单图/批量/ZIP/视频）
-  - 处理 SSE 流式输出 Agent 的思考过程和结果
-"""
-
-import json
 from typing import AsyncGenerator
 
 from langchain.agents import AgentExecutor, create_openai_tools_agent
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
+from app.agent.agents.analysis_agent import AnalysisSubAgent
+from app.agent.agents.detection_agent import DetectionSubAgent
+from app.agent.agents.qa_agent import QASubAgent
+from app.agent.graph import build_agent_graph
+from app.agent.memory import conversation_memory
+from app.agent.prompts import DETECTION_AGENT_SYSTEM_PROMPT
+from app.agent.tools.analysis_tool import ANALYSIS_TOOLS
+from app.agent.tools.context import current_user_id, current_user_is_superuser
+from app.agent.tools.detection_tool import (
+    DETECTION_TOOLS,
+    detect_batch_images,
+    detect_single_image,
+    detect_video_file,
+    detect_zip_images_file,
+)
+from app.agent.tools.knowledge_tool import KNOWLEDGE_TOOLS
 from app.config.settings import settings
 from app.core.logger import get_logger
-from app.services.detection_service import detection_service
 
 logger = get_logger(__name__)
 
 
-@tool
-def detect_single_image(image_path: str, conf: float = 0.25, iou: float = 0.45) -> str:
-    """
-    检测单张图片中的目标物体。
-
-    Args:
-        image_path: 图片文件路径或 URL
-        conf: 置信度阈值，默认 0.25
-        iou: NMS IoU 阈值，默认 0.45
-
-    Returns:
-        JSON 字符串，包含检测结果（目标数量、类别统计、标注图路径）
-    """
-    result = detection_service.detect_single(image_path, conf=conf, iou=iou)
-    return json.dumps(result, ensure_ascii=False)
-
-
-@tool
-def detect_batch_images(image_paths: list[str], conf: float = 0.25) -> str:
-    """
-    批量检测多张图片中的目标物体。
-
-    Args:
-        image_paths: 图片文件路径列表
-        conf: 置信度阈值，默认 0.25
-
-    Returns:
-        JSON 字符串，包含每张图片的检测结果汇总
-    """
-    result = detection_service.detect_batch(image_paths, conf=conf)
-    return json.dumps(result, ensure_ascii=False)
-
-
-@tool
-def detect_zip_images_file(zip_path: str, conf: float = 0.25) -> str:
-    """
-    解压 ZIP 文件并批量检测其中所有图片的目标物体。
-
-    Args:
-        zip_path: ZIP 文件路径
-        conf: 置信度阈值，默认 0.25
-
-    Returns:
-        JSON 字符串，包含 ZIP 内所有图片的检测结果汇总
-    """
-    result = detection_service.detect_zip(zip_path, conf=conf)
-    return json.dumps(result, ensure_ascii=False)
-
-
-@tool
-def detect_video_file(
-    video_path: str,
-    conf: float = 0.25,
-    frame_sample_rate: int = 5,
-) -> str:
-    """
-    检测视频文件中的目标物体。对视频进行帧采样后逐帧检测。
-
-    Args:
-        video_path: 视频文件路径（mp4/avi/mov 等）
-        conf: 置信度阈值，默认 0.25
-        frame_sample_rate: 帧采样间隔，每 N 帧取 1 帧，默认 5
-
-    Returns:
-        JSON 字符串，包含视频检测结果（关键帧、目标统计、时长信息）
-    """
-    result = detection_service.detect_video(
-        video_path,
-        conf=conf,
-        frame_sample_rate=frame_sample_rate,
-    )
-    if "key_frames" in result:
-        for frame in result["key_frames"]:
-            frame.pop("annotated_image_base64", None)
-    result.pop("annotated_video_url", None)
-    return json.dumps(result, ensure_ascii=False)
-
-
-DETECTION_TOOLS = [
-    detect_single_image,
-    detect_batch_images,
-    detect_zip_images_file,
-    detect_video_file,
-]
-
-
 def create_llm():
-    """根据配置创建 LLM 实例。"""
-    qwen_api_key = getattr(settings, "QWEN_API_KEY", "")
-    if qwen_api_key and qwen_api_key != "sk-your-qwen-api-key":
-        api_key = qwen_api_key
-        base_url = getattr(
-            settings,
-            "QWEN_BASE_URL",
-            "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        )
-        model_name = getattr(settings, "QWEN_MODEL", "qwen-plus")
+    """根据配置创建通义千问或 OpenAI 兼容的聊天模型。"""
+    if settings.QWEN_API_KEY and settings.QWEN_API_KEY != "sk-your-qwen-api-key":
+        api_key = settings.QWEN_API_KEY
+        base_url = settings.QWEN_BASE_URL
+        model_name = settings.QWEN_MODEL
     else:
-        api_key = getattr(settings, "OPENAI_API_KEY", "")
-        base_url = getattr(settings, "OPENAI_BASE_URL", "https://api.openai.com/v1")
-        model_name = getattr(settings, "OPENAI_MODEL", "gpt-4o-mini")
+        api_key = settings.OPENAI_API_KEY
+        base_url = settings.OPENAI_BASE_URL
+        model_name = settings.OPENAI_MODEL
 
     return ChatOpenAI(
         model=model_name,
@@ -133,66 +49,248 @@ def create_llm():
 
 
 class DetectionAgent:
-    """检测智能体 — 封装 ReAct Agent 创建和对话逻辑。"""
+    """绑定 8 个工具并维护跨轮次上下文的检测智能体。"""
 
     def __init__(self):
         self.llm = create_llm()
-
-        system_prompt = """你是一个专业的目标检测助手。你可以帮用户检测图片或视频中的目标物体。
-
-重要规则：
-- 当用户消息中包含 [附件图片路径: xxx] 时，xxx 就是图片的服务器路径，你应直接使用它调用检测工具
-- 当用户消息中包含 [附件视频路径: xxx] 时，xxx 就是视频的服务器路径，你应直接使用它调用视频检测工具
-- 不要要求用户再次提供路径，直接使用附件中给出的路径
-- 对于单张图片，调用 detect_single_image 工具
-- 对于多张图片或 ZIP 文件，调用 detect_batch_images 或 detect_zip_images_file 工具
-- 对于视频文件，调用 detect_video_file 工具
-
-工作流程：
-1. 理解用户意图
-2. 如果有附件路径，直接调用对应检测工具
-3. 调用工具获取检测结果
-4. 用自然语言总结检测结果
-
-回复格式要求：
-- 先报告检测到的目标总数
-- 列出各类别的数量统计
-- 对于视频检测，还要报告视频时长和处理的帧数
-- 如果有标注图，告知用户可以在结果卡片中查看
-- 简洁专业，不要过度解释"""
+        self.all_tools = DETECTION_TOOLS + ANALYSIS_TOOLS + KNOWLEDGE_TOOLS
 
         prompt = ChatPromptTemplate.from_messages(
             [
-                ("system", system_prompt),
+                ("system", DETECTION_AGENT_SYSTEM_PROMPT),
                 MessagesPlaceholder(variable_name="chat_history", optional=True),
                 ("human", "{input}"),
                 MessagesPlaceholder(variable_name="agent_scratchpad"),
             ]
         )
-
         agent = create_openai_tools_agent(
             llm=self.llm,
-            tools=DETECTION_TOOLS,
+            tools=self.all_tools,
             prompt=prompt,
         )
-
         self.executor = AgentExecutor(
             agent=agent,
-            tools=DETECTION_TOOLS,
+            tools=self.all_tools,
             verbose=True,
-            max_iterations=5,
+            max_iterations=8,
             return_intermediate_steps=True,
         )
 
-        logger.info("DetectionAgent 初始化完成，绑定 %d 个工具", len(DETECTION_TOOLS))
+        # 讲义中的进阶编排：Supervisor → Detection/Analysis/QA → 汇总。
+        # 单 Agent executor 保留作为兼容与图构建失败时的降级路径。
+        self.graph = None
+        try:
+            self.graph = build_agent_graph(
+                self.llm,
+                DetectionSubAgent(self.llm),
+                AnalysisSubAgent(self.llm),
+                QASubAgent(self.llm),
+            )
+        except Exception as exc:
+            logger.error("LangGraph 多 Agent 初始化失败，将使用单 Agent 降级: %s", str(exc))
 
-    async def chat(self, message: str, image_path: str = None) -> dict:
-        """处理用户对话消息。"""
+        logger.info(
+            "DetectionAgent 初始化完成，绑定 %d 个工具（检测 %d + 分析 %d + 知识 %d）",
+            len(self.all_tools),
+            len(DETECTION_TOOLS),
+            len(ANALYSIS_TOOLS),
+            len(KNOWLEDGE_TOOLS),
+        )
+
+    async def chat_stream(
+        self,
+        message: str,
+        user_id: int = 0,
+        session_id: str = "default",
+        image_path: str | None = None,
+        user_is_superuser: bool = False,
+    ) -> AsyncGenerator[dict, None]:
+        """加载历史、执行 Agent，并依次产生六类 SSE 事件。"""
         if image_path:
             message = f"{message}\n[附件图片路径: {image_path}]"
 
+        chat_history = []
         try:
-            result = await self.executor.ainvoke({"input": message})
+            for history_message in conversation_memory.load_history(user_id, session_id):
+                if history_message["role"] == "user":
+                    chat_history.append(HumanMessage(content=history_message["content"]))
+                elif history_message["role"] == "ai":
+                    chat_history.append(AIMessage(content=history_message["content"]))
+        except Exception as exc:
+            logger.warning("加载对话历史失败: %s", str(exc))
+
+        try:
+            conversation_memory.save_message(user_id, session_id, "user", message)
+        except Exception as exc:
+            logger.warning("保存用户消息失败: %s", str(exc))
+
+        yield {"type": "thinking", "content": "正在分析您的请求..."}
+
+        full_text = ""
+        user_token = current_user_id.set(user_id)
+        superuser_token = current_user_is_superuser.set(user_is_superuser)
+        try:
+            if self.graph is not None:
+                graph_messages = [*chat_history, HumanMessage(content=message)]
+                graph_result = {}
+                async for event in self.graph.astream_events(
+                    {
+                        "messages": graph_messages,
+                        "user_id": user_id,
+                        "session_id": session_id,
+                        "is_superuser": user_is_superuser,
+                        "tool_events": [],
+                    },
+                    version="v2",
+                ):
+                    event_kind = event.get("event")
+                    metadata = event.get("metadata", {})
+                    node_name = metadata.get("langgraph_node")
+
+                    if event_kind == "on_tool_start":
+                        tool_name = event.get("name", "")
+                        tool_input = event.get("data", {}).get("input", {})
+                        logger.info("多 Agent 工具调用: %s", tool_name)
+                        safe_input = (
+                            {
+                                key: str(value)[:100]
+                                for key, value in tool_input.items()
+                            }
+                            if isinstance(tool_input, dict)
+                            else str(tool_input)[:100]
+                        )
+                        yield {
+                            "type": "tool_start",
+                            "tool": tool_name,
+                            "input": safe_input,
+                        }
+
+                    elif event_kind == "on_tool_end":
+                        tool_name = event.get("name", "")
+                        tool_output = event.get("data", {}).get("output", "")
+                        yield {
+                            "type": "tool_end",
+                            "tool": tool_name,
+                            "summary": str(tool_output)[:100] if tool_output else "",
+                        }
+
+                    elif event_kind == "on_chat_model_stream" and node_name == "summarize":
+                        chunk = event.get("data", {}).get("chunk")
+                        content = getattr(chunk, "content", "")
+                        if isinstance(content, list):
+                            content = "".join(
+                                item.get("text", "")
+                                if isinstance(item, dict)
+                                else str(item)
+                                for item in content
+                            )
+                        if isinstance(content, str) and content:
+                            full_text += content
+                            yield {"type": "text_chunk", "content": content}
+
+                    elif (
+                        event_kind == "on_chain_end"
+                        and event.get("name") == "LangGraph"
+                    ):
+                        output = event.get("data", {}).get("output", {})
+                        if isinstance(output, dict):
+                            graph_result = output
+
+                final_response = graph_result.get("final_response", "") or ""
+                if not full_text and final_response:
+                    for start in range(0, len(final_response), 24):
+                        chunk = final_response[start : start + 24]
+                        full_text += chunk
+                        yield {"type": "text_chunk", "content": chunk}
+                elif final_response:
+                    full_text = final_response
+            else:
+                async for event in self.executor.astream_events(
+                    {"input": message, "chat_history": chat_history},
+                    version="v2",
+                ):
+                    event_kind = event.get("event")
+
+                    if event_kind == "on_chat_model_stream":
+                        chunk = event.get("data", {}).get("chunk")
+                        content = getattr(chunk, "content", "")
+                        if isinstance(content, str) and content:
+                            full_text += content
+                            yield {"type": "text_chunk", "content": content}
+
+                    elif event_kind == "on_tool_start":
+                        tool_name = event.get("name", "")
+                        tool_input = event.get("data", {}).get("input", {})
+                        logger.info("工具调用: %s, 输入: %s", tool_name, str(tool_input)[:200])
+                        safe_input = (
+                            {key: str(value)[:100] for key, value in tool_input.items()}
+                            if isinstance(tool_input, dict)
+                            else str(tool_input)[:100]
+                        )
+                        yield {
+                            "type": "tool_start",
+                            "tool": tool_name,
+                            "input": safe_input,
+                        }
+
+                    elif event_kind == "on_tool_end":
+                        tool_name = event.get("name", "")
+                        tool_output = event.get("data", {}).get("output", "")
+                        logger.info("工具完成: %s", tool_name)
+                        yield {
+                            "type": "tool_end",
+                            "tool": tool_name,
+                            "summary": str(tool_output)[:100] if tool_output else "",
+                        }
+        except Exception as exc:
+            logger.error("Agent 流式执行异常: %s", str(exc), exc_info=True)
+            yield {"type": "error", "content": f"处理出错：{str(exc)}"}
+        finally:
+            current_user_id.reset(user_token)
+            current_user_is_superuser.reset(superuser_token)
+
+        if full_text:
+            try:
+                conversation_memory.save_message(user_id, session_id, "ai", full_text)
+            except Exception as exc:
+                logger.warning("保存 AI 回复失败: %s", str(exc))
+
+        yield {"type": "done", "full_text": full_text}
+
+    async def chat(
+        self,
+        message: str,
+        image_path: str | None = None,
+        user_id: int = 0,
+        session_id: str = "default",
+        user_is_superuser: bool = False,
+    ) -> dict:
+        """保留非流式调用方式，兼容现有后端调用。"""
+        if image_path:
+            message = f"{message}\n[附件图片路径: {image_path}]"
+        try:
+            if self.graph is not None:
+                user_token = current_user_id.set(user_id)
+                superuser_token = current_user_is_superuser.set(user_is_superuser)
+                try:
+                    result = await self.graph.ainvoke(
+                        {
+                            "messages": [HumanMessage(content=message)],
+                            "user_id": user_id,
+                            "session_id": session_id,
+                            "is_superuser": user_is_superuser,
+                            "tool_events": [],
+                        }
+                    )
+                finally:
+                    current_user_id.reset(user_token)
+                    current_user_is_superuser.reset(superuser_token)
+                return {
+                    "output": result.get("final_response", ""),
+                    "intermediate_steps": result.get("tool_events", []),
+                }
+
+            result = await self.executor.ainvoke({"input": message, "chat_history": []})
             return {
                 "output": result["output"],
                 "intermediate_steps": result.get("intermediate_steps", []),
@@ -202,64 +300,6 @@ class DetectionAgent:
             return {
                 "output": f"抱歉，处理过程中出现错误：{str(exc)}",
                 "intermediate_steps": [],
-            }
-
-    async def chat_stream(
-        self,
-        message: str,
-        image_path: str = None,
-    ) -> AsyncGenerator:
-        """流式处理对话消息（用于 SSE）。"""
-        if image_path:
-            message = f"{message}\n[附件图片路径: {image_path}]"
-
-        try:
-            async for event in self.executor.astream_events(
-                {"input": message},
-                version="v2",
-            ):
-                event_kind = event["event"]
-
-                if event_kind == "on_chat_model_stream":
-                    chunk = event["data"]["chunk"]
-                    if hasattr(chunk, "content") and chunk.content:
-                        yield {
-                            "type": "text_chunk",
-                            "content": chunk.content,
-                        }
-
-                elif event_kind == "on_tool_start":
-                    tool_name = event["name"]
-                    tool_input = event["data"].get("input", {})
-                    logger.info("工具调用: %s, 输入: %s", tool_name, str(tool_input)[:200])
-                    yield {
-                        "type": "tool_call",
-                        "tool": tool_name,
-                        "input": tool_input,
-                    }
-
-                elif event_kind == "on_tool_end":
-                    tool_data = event.get("data", {})
-                    tool_output = tool_data.get("output", "")
-                    tool_name = event.get("name", "")
-                    logger.info(
-                        "工具完成: %s, output类型=%s, output长度=%d",
-                        tool_name,
-                        type(tool_output).__name__,
-                        len(str(tool_output)) if tool_output else 0,
-                    )
-                    logger.debug("on_tool_end data keys: %s", list(tool_data.keys()))
-                    yield {
-                        "type": "tool_result",
-                        "tool": tool_name,
-                        "result": str(tool_output) if tool_output else "",
-                    }
-
-        except Exception as exc:
-            logger.error("Agent 流式执行异常: %s", str(exc), exc_info=True)
-            yield {
-                "type": "error",
-                "content": f"处理出错：{str(exc)}",
             }
 
 
