@@ -1,0 +1,124 @@
+# =============================================================================
+# RSOD Web Platform - 生产部署工作流
+# 触发条件: build-frontend.yml 或 build-backend.yml 成功完成后
+# 部署流程: 推送 compose 文件 → SSH 登录 → 拉取镜像 → 启动服务 → 清理
+# =============================================================================
+
+name: Deploy - Production
+
+on:
+  # 监听前端/后端构建工作流完成事件
+  workflow_run:
+    workflows:
+      - "Build & Push - Frontend"
+      - "Build & Push - Backend"
+    types:
+      - completed
+    branches:
+      - main
+  # 允许手动触发（用于紧急回滚或首次部署）
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要部署的镜像标签 (留空则使用 latest)"
+        required: false
+        default: "latest"
+
+jobs:
+  deploy:
+    name: "部署到生产服务器"
+    # 仅当构建成功 或 手动触发时执行
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    # 部署环境（用于 GitHub Environments 保护规则）
+    environment: production
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      # ------------------------- 步骤 1: 推送部署文件 -------------------------
+      - name: 推送 docker-compose.server.yml 到服务器
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+          # SSH 主机密钥验证（生产环境建议使用 known_hosts）
+          fingerprint: ${{ secrets.SERVER_SSH_FINGERPRINT }}
+          source: "docker-compose.server.yml"
+          target: "/opt/rsod-platform/"
+          # 覆盖已存在的文件
+          overwrite: true
+          # 在 SCP 前创建目标目录
+          mkdir_directory: true
+
+      # ------------------------- 步骤 2: 远程部署操作 -------------------------
+      - name: 远程执行部署命令
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+          fingerprint: ${{ secrets.SERVER_SSH_FINGERPRINT }}
+          # 部署脚本
+          script: |
+            set -e  # 任何命令失败立即退出
+
+            echo "=============================================="
+            echo "  RSOD Platform - 生产部署"
+            echo "  时间: $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "  标签: ${{ github.event.inputs.tag || 'latest' }}"
+            echo "=============================================="
+
+            # 切换到部署目录
+            cd /opt/rsod-platform
+
+            # 设置要拉取的标签（可通过 workflow_dispatch 指定）
+            DEPLOY_TAG="${{ github.event.inputs.tag || 'latest' }}"
+            export FRONTEND_TAG="${DEPLOY_TAG}"
+            export BACKEND_TAG="${DEPLOY_TAG}"
+
+            # 登录 GitHub Container Registry（使用部署专用 Token）
+            echo "${{ secrets.GHCR_DEPLOY_TOKEN }}" | \
+              docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
+            # 拉取最新镜像
+            echo "[1/4] 拉取最新镜像..."
+            docker compose -f docker-compose.server.yml pull
+
+            # 启动/更新服务（up -d 自动处理新增服务和配置变更）
+            echo "[2/4] 启动/更新服务..."
+            docker compose -f docker-compose.server.yml up -d --remove-orphans
+
+            # 等待健康检查通过
+            echo "[3/4] 等待服务健康检查..."
+            sleep 10
+            docker compose -f docker-compose.server.yml ps
+
+            # 清理未使用的镜像和构建缓存（释放磁盘空间）
+            echo "[4/4] 清理无用镜像..."
+            docker image prune -af --filter "until=72h"
+            docker builder prune -f --filter "until=72h"
+
+            # 显示当前运行状态
+            echo "=============================================="
+            echo "  部署完成！当前运行状态:"
+            echo "=============================================="
+            docker compose -f docker-compose.server.yml ps
+
+            # 登出（安全清理）
+            docker logout ghcr.io
+
+      # ------------------------- 步骤 3: 部署状态通知（可选） -------------------------
+      - name: 部署成功通知
+        if: success()
+        run: |
+          echo "::notice:: 部署成功！服务器: ${{ secrets.SERVER_HOST }}"
+
+      - name: 部署失败通知
+        if: failure()
+        run: |
+          echo "::error:: 部署失败！请检查服务器 ${{ secrets.SERVER_HOST }} 的日志"

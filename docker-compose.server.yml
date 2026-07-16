@@ -1,0 +1,186 @@
+# =============================================================================
+# RSOD Web Platform - 生产环境容器编排
+# 部署命令: docker compose -f docker-compose.server.yml up -d
+# =============================================================================
+
+version: "3.9"
+
+# ------------------------- 网络定义 -------------------------
+networks:
+  rsod-network:
+    driver: bridge
+    name: rsod-network
+
+# ------------------------- 卷定义（持久化存储） -------------------------
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+
+# ------------------------- 服务定义 -------------------------
+services:
+
+  # ======================== 前端服务 ========================
+  frontend:
+    image: ghcr.io/heyebing/rsod-frontend:latest
+    container_name: rsod-frontend
+    ports:
+      - "80:80"
+    networks:
+      - rsod-network
+    restart: unless-stopped
+    # 资源限制（防止内存泄漏导致宿主机 OOM）
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+        reservations:
+          memory: 128M
+          cpus: "0.25"
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ======================== 后端服务 ========================
+  backend:
+    image: ghcr.io/heyebing/rsod-backend:latest
+    container_name: rsod-backend
+    ports:
+      - "8000:8000"
+    networks:
+      - rsod-network
+    restart: unless-stopped
+    # 从宿主机读取环境变量（敏感信息不入库）
+    env_file:
+      - .env
+    # 依赖关系：等待数据库和 MinIO 就绪后再启动
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    # 资源限制（PyTorch 推理需要更多内存和 CPU）
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: "4.0"
+        reservations:
+          memory: 2G
+          cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # ======================== 数据库服务 ========================
+  db:
+    image: postgres:16-alpine
+    container_name: rsod-db
+    ports:
+      - "5432:5432"
+    networks:
+      - rsod-network
+    restart: unless-stopped
+    environment:
+      # 这些值可从 .env 覆盖，提供合理默认值
+      POSTGRES_DB: ${POSTGRES_DB:-rsod}
+      POSTGRES_USER: ${POSTGRES_USER:-rsod_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      # 数据持久化到宿主机 /data/postgres
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rsod_user} -d ${POSTGRES_DB:-rsod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ======================== 缓存服务 ========================
+  redis:
+    image: redis:7-alpine
+    container_name: rsod-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - rsod-network
+    restart: unless-stopped
+    # 启用 AOF 持久化以防止数据丢失
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      # 数据持久化到宿主机 /data/redis
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "30m"
+        max-file: "3"
+
+  # ======================== 对象存储服务 ========================
+  minio:
+    image: minio/minio:latest
+    container_name: rsod-minio
+    ports:
+      - "9000:9000"   # API 端口
+      - "9001:9001"   # Web 管理控制台
+    networks:
+      - rsod-network
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      # 公开访问端点（外部 IP/域名）
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://localhost:9000}
+    volumes:
+      # 数据持久化到宿主机 /data/minio
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
