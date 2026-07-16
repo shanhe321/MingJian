@@ -31,6 +31,18 @@ export const useAgentStore = defineStore('agent', {
   },
 
   actions: {
+    /**
+     * 确保当前存在会话 ID，用于对话记忆（Redis 按 session_id 存取历史）
+     * 若尚未生成则随机创建一个短 ID
+     * @returns {string} 当前会话 ID
+     */
+    ensureSessionId() {
+      if (!this.currentSessionId) {
+        this.currentSessionId = Math.random().toString(36).slice(2, 10)
+      }
+      return this.currentSessionId
+    },
+
     /** 添加一条消息 */
     addMessage(message) {
       this.messages.push(message)

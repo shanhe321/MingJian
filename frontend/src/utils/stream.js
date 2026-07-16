@@ -1,17 +1,26 @@
 /**
  * SSE (Server-Sent Events) 流式处理工具
- * 用于智能体对话的流式渲染
+ * 用于智能体对话的流式渲染（Day 11 增强版）
+ *
+ * 后端 `POST /api/chat/stream` 依次产生 6 类事件：
+ *   - thinking    Agent 正在思考（LLM 推理中）
+ *   - tool_start  开始调用工具 { tool, input }
+ *   - tool_end    工具调用完成 { tool, summary }
+ *   - text_chunk  LLM 回复文本片段 { content }
+ *   - done        对话完成 { full_text }
+ *   - error       出错 { content }
  *
  * 使用方式：
  *   const stop = streamChat(
  *     '/api/chat/stream',
- *     { message: '你好' },
+ *     { message: '你好', session_id: 'abc123' },
  *     {
- *       onMessage: (chunk) => { content += chunk },
+ *       onMessage: (event) => { ... 根据 event.type 分发处理 ... },
  *       onDone: () => { console.log('完成') },
  *       onError: (err) => { console.error(err) },
  *     }
  *   )
+ *   调用 stop() 即可中断当前请求
  */
 
 /**
@@ -126,4 +135,18 @@ function processSSEMessage(message, onMessage) {
   }
 
   return false
+}
+
+/**
+ * 工具名称中文映射，供 ChatPage 等组件展示更友好的工具调用提示
+ */
+export const TOOL_NAME_MAP = {
+  detect_single_image: '单图检测',
+  detect_batch_images: '批量检测',
+  detect_zip_images_file: 'ZIP 检测',
+  detect_video_file: '视频检测',
+  search_knowledge: '知识库检索',
+  query_detection_stats: '统计查询',
+  query_detection_history: '历史查询',
+  query_user_list: '用户查询',
 }

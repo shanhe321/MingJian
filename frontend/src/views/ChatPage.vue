@@ -4,7 +4,7 @@
     <div class="message-list" ref="messageListRef">
       <div
         v-for="(msg, index) in agentStore.messages"
-        :key="index"
+        :key="msg.id ?? index"
         :class="['message-item', `message-${msg.role}`]"
       >
         <!-- 用户消息 -->
@@ -29,18 +29,59 @@
           v-else-if="msg.role === 'assistant'"
           :class="['message-bubble', 'assistant-bubble', { 'is-error': msg.error }]"
         >
-          <div v-if="msg.loading && !msg.content" class="typing-indicator">
+          <!-- 思考中 / 打字动画（尚无任何内容、工具调用或思考文案时展示） -->
+          <div v-if="msg.loading && !msg.content && !msg.toolCalls?.length && !msg.statusText" class="typing-indicator">
             <span></span><span></span><span></span>
+          </div>
+          <!-- Agent 思考过程提示 -->
+          <div v-else-if="msg.loading && !msg.content && msg.statusText" class="thinking-hint">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>{{ msg.statusText }}</span>
           </div>
           <div v-else class="message-content markdown-body" v-html="renderMarkdown(msg.content)"></div>
 
-          <!-- 工具调用提示 -->
-          <div v-if="msg.toolCall" class="tool-call-info">
-            <el-tag size="small" type="info">🔧 调用工具：{{ msg.toolCall.tool }}</el-tag>
+          <!-- 工具调用可视化：loading → done -->
+          <div v-if="msg.toolCalls && msg.toolCalls.length > 0" class="tool-calls">
+            <div
+              v-for="(tc, idx) in msg.toolCalls"
+              :key="idx"
+              class="tool-call-item"
+              :class="{ 'is-loading': tc.status === 'loading' }"
+            >
+              <el-icon v-if="tc.status === 'loading'" class="is-loading"><Loading /></el-icon>
+              <el-icon v-else-if="tc.status === 'error'" color="#f56c6c"><CircleClose /></el-icon>
+              <el-icon v-else color="#67c23a"><CircleCheckFilled /></el-icon>
+              <span class="tool-name">{{ getToolName(tc.tool) }}</span>
+              <span class="tool-arrow">→</span>
+              <span
+                class="tool-summary"
+                :class="{ success: tc.status === 'done', error: tc.status === 'error' }"
+              >
+                {{ tc.summary || (tc.status === 'loading' ? '执行中...' : '完成') }}
+              </span>
+            </div>
           </div>
 
-          <!-- 检测结果卡片 -->
+          <!-- 知识库检索结果标注 -->
+          <div v-if="msg.hasKnowledge === true" class="knowledge-badge success">
+            <el-icon><CircleCheckFilled /></el-icon>
+            <span>📚 本次回答参考了知识库检索结果</span>
+          </div>
+          <div v-else-if="msg.hasKnowledge === false" class="knowledge-badge empty">
+            <el-icon><InfoFilled /></el-icon>
+            <span>💡 知识库中暂无相关内容，回答来自大模型</span>
+          </div>
+
+          <!-- 检测结果卡片（快捷检测按钮走此路径展示） -->
           <DetectionResultCard v-if="msg.detectionResult" :result="msg.detectionResult" />
+
+          <!-- 错误重试 -->
+          <div v-if="msg.error" class="error-retry">
+            <el-button size="small" type="danger" plain @click="retryMessage(msg)">
+              <el-icon><RefreshRight /></el-icon>
+              重新发送
+            </el-button>
+          </div>
         </div>
       </div>
     </div>
@@ -57,6 +98,11 @@
         🎬 视频
       </el-button>
       <el-button disabled>📹 摄像头</el-button>
+      <div class="quick-actions-spacer"></div>
+      <el-button :disabled="agentStore.isLoading" text @click="handleNewChat">
+        <el-icon><Delete /></el-icon>
+        清空对话
+      </el-button>
     </div>
 
     <!-- ── 输入区域 ── -->
@@ -83,7 +129,7 @@
         <!-- 文本输入框 -->
         <el-input
           v-model="inputText"
-          placeholder="输入消息，或拖拽图片/ZIP 到这里..."
+          placeholder="输入消息，或拖拽图片/ZIP 到这里...（支持“再检测一张”等上下文对话）"
           :disabled="agentStore.isLoading"
           @keyup.enter="sendMessage"
         />
@@ -108,24 +154,37 @@
 
 <script setup>
 /**
- * ChatPage.vue — 智能对话界面
+ * ChatPage.vue — 智能对话界面（Day 11：流式渲染优化 + 工具调用可视化）
  *
  * 功能：
  *   - 消息气泡（用户/AI 区分）
  *   - 文件附件上传（图片/ZIP 拖拽或选择）
- *   - SSE 流式渲染 AI 回复
- *   - 检测结果卡片展示
- *   - 快捷操作栏（单图/批量/视频/摄像头）
- *   - 中断当前对话
+ *   - SSE 流式渲染 AI 回复，展示思考过程 / 工具调用 loading → done 状态
+ *   - 跨轮次对话记忆（携带 session_id，支持“再检测一张”等上下文表达）
+ *   - 知识库检索结果标注（是否命中知识库）
+ *   - 检测结果卡片展示（快捷按钮路径）
+ *   - 快捷操作栏（单图/批量/视频/摄像头）+ 清空对话
+ *   - 中断当前对话 / 出错后一键重试
  */
 import { detectBatch, detectSingle, detectVideo, detectZip, getVideoStatus } from '@/api/detection'
+import { clearChatSession } from '@/api/chat'
 import DetectionResultCard from '@/components/DetectionResultCard.vue'
 import { useAgentStore } from '@/stores/agent'
 import { renderMarkdown } from '@/utils/markdown'
 import request from '@/utils/request'
-import { streamChat } from '@/utils/stream'
-import { Close, Paperclip, UploadFilled } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { streamChat, TOOL_NAME_MAP } from '@/utils/stream'
+import {
+  Close,
+  CircleCheckFilled,
+  CircleClose,
+  Delete,
+  InfoFilled,
+  Loading,
+  Paperclip,
+  RefreshRight,
+  UploadFilled,
+} from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, nextTick, onMounted, ref } from 'vue'
 
 // ── Store ──
@@ -137,6 +196,7 @@ const selectedFile = ref(null)
 const messageListRef = ref(null)
 const fileInputRef = ref(null)
 const isDragging = ref(false)
+let messageIdSeq = 0
 
 // ── 计算属性 ──
 const canSend = computed(() => {
@@ -157,6 +217,105 @@ function scrollToBottom() {
   })
 }
 
+/** 生成带唯一 id 的消息并加入会话（用于精确定位重试目标，避免依赖“最后一条消息”） */
+function pushMessage(message) {
+  const withId = { id: `msg-${Date.now()}-${messageIdSeq++}`, ...message }
+  agentStore.addMessage(withId)
+  return withId
+}
+
+/** 工具名称中文映射（沿用 stream.js 中的统一映射） */
+function getToolName(toolKey) {
+  return TOOL_NAME_MAP[toolKey] || toolKey
+}
+
+/**
+ * 发起一次 Agent 对话流式请求
+ *
+ * @param {Object} requestBody - 请求体（message / image_path / session_id）
+ * @param {Object} assistantMsg - 承载本次回复的 AI 消息对象（通过引用直接修改，兼容重试场景）
+ */
+function runChatStream(requestBody, assistantMsg) {
+  assistantMsg.content = ''
+  assistantMsg.loading = true
+  assistantMsg.error = false
+  assistantMsg.statusText = ''
+  assistantMsg.toolCalls = []
+  assistantMsg.hasKnowledge = undefined
+  assistantMsg.detectionResult = null
+  assistantMsg.retryPayload = requestBody
+
+  agentStore.setLoading(true)
+  scrollToBottom()
+
+  let fullContent = ''
+
+  const stop = streamChat('/api/chat/stream', requestBody, {
+    onMessage: (data) => {
+      if (data.type === 'thinking') {
+        assistantMsg.statusText = data.content || '正在思考...'
+      } else if (data.type === 'tool_start') {
+        assistantMsg.statusText = ''
+        assistantMsg.toolCalls.push({ tool: data.tool, status: 'loading', summary: '' })
+      } else if (data.type === 'tool_end') {
+        const tc = [...assistantMsg.toolCalls].reverse().find((t) => t.tool === data.tool && t.status === 'loading')
+        if (tc) {
+          tc.summary = describeToolResult(data.tool, data.summary)
+          tc.status = data.summary && data.summary.startsWith('{"error"') ? 'error' : 'done'
+        }
+        if (data.tool === 'search_knowledge') {
+          if (data.summary && data.summary.includes('暂无相关内容')) {
+            assistantMsg.hasKnowledge = false
+          } else if (data.summary && data.summary.includes('"knowledge"')) {
+            assistantMsg.hasKnowledge = true
+          }
+        }
+        scrollToBottom()
+      } else if (data.type === 'text_chunk') {
+        assistantMsg.statusText = ''
+        fullContent += data.content
+        assistantMsg.content = fullContent
+        scrollToBottom()
+      } else if (data.type === 'error') {
+        assistantMsg.content = data.content
+        assistantMsg.loading = false
+        assistantMsg.error = true
+      }
+      // done 事件仅携带 full_text 汇总信息，文本已通过 text_chunk 逐字渲染，无需额外处理
+    },
+    onDone: () => {
+      assistantMsg.loading = false
+      assistantMsg.statusText = ''
+      agentStore.setLoading(false)
+      agentStore.abortController = null
+    },
+    onError: (err) => {
+      assistantMsg.content = assistantMsg.content || `抱歉，处理出错了：${err.message}`
+      assistantMsg.loading = false
+      assistantMsg.error = true
+      agentStore.setLoading(false)
+      agentStore.abortController = null
+      ElMessage.error('对话请求失败，请重试')
+    },
+  })
+
+  agentStore.abortController = stop
+}
+
+/**
+ * 尽量从被截断的工具结果摘要中提炼出人类可读的展示文案。
+ * 后端出于流量考虑只回传前 100 个字符，无法保证是合法 JSON，因此只做“最大努力”识别。
+ */
+function describeToolResult(tool, summary) {
+  if (!summary) return '完成'
+  if (summary.startsWith('{"error"')) return '执行失败'
+  if (tool === 'search_knowledge') {
+    if (summary.includes('暂无相关内容')) return '知识库中暂无相关内容'
+    if (summary.includes('"knowledge"')) return '检索成功'
+  }
+  return '完成'
+}
+
 /** 发送消息 */
 async function sendMessage() {
   if (!canSend.value) return
@@ -169,7 +328,7 @@ async function sendMessage() {
     : null
 
   // 添加用户消息到列表
-  agentStore.addMessage({
+  pushMessage({
     role: 'user',
     content: message || (fileToSend ? `[附件] ${fileToSend.name}` : ''),
     image: fileToSend ? fileToSend.name : null,
@@ -181,10 +340,11 @@ async function sendMessage() {
   selectedFile.value = null
 
   // 添加 AI 加载占位
-  agentStore.addMessage({
+  const assistantMsg = pushMessage({
     role: 'assistant',
     content: '',
     loading: true,
+    toolCalls: [],
   })
 
   agentStore.setLoading(true)
@@ -201,76 +361,28 @@ async function sendMessage() {
       serverImagePath = uploadResult.image_path
     } catch (err) {
       console.error('[图片上传失败]', err.response?.data || err.message || err)
-      const lastMsg = agentStore.messages[agentStore.messages.length - 1]
-      lastMsg.content = `图片上传失败：${err.response?.data?.detail || err.message || '未知错误'}，请重试`
-      lastMsg.loading = false
-      lastMsg.error = true
+      assistantMsg.content = `图片上传失败：${err.response?.data?.detail || err.message || '未知错误'}，请重试`
+      assistantMsg.loading = false
+      assistantMsg.error = true
       agentStore.setLoading(false)
       return
     }
   }
 
-  // 发起 SSE 流式请求
+  // 发起 SSE 流式请求（携带 session_id 以支持跨轮次对话记忆）
   const requestBody = {
     message: message || '检测这张图片',
+    session_id: agentStore.ensureSessionId(),
     ...(serverImagePath ? { image_path: serverImagePath } : {}),
   }
 
-  let fullContent = ''
+  runChatStream(requestBody, assistantMsg)
+}
 
-  const stop = streamChat('/api/chat/stream', requestBody, {
-    onMessage: (data) => {
-      if (data.type === 'text_chunk') {
-        fullContent += data.content
-        agentStore.updateLastAssistantMessage(fullContent)
-        scrollToBottom()
-      } else if (data.type === 'tool_call') {
-        // 工具调用中，更新最后一条 AI 消息的工具信息
-        const lastMsg = agentStore.messages[agentStore.messages.length - 1]
-        lastMsg.toolCall = { tool: data.tool, input: data.input }
-      } else if (data.type === 'tool_result') {
-        // 工具调用返回结果
-        const lastMsg = agentStore.messages[agentStore.messages.length - 1]
-        try {
-          const result = JSON.parse(data.result)
-          if (result.detections) {
-            // 有检测结果，设置到消息中
-            lastMsg.detectionResult = result
-            lastMsg.loading = false
-          }
-        } catch (e) {
-          console.warn('[工具结果解析失败]', e.message)
-          lastMsg.content += `\n[工具结果: ${data.result?.substring(0, 100)}...]`
-        }
-        scrollToBottom()
-      } else if (data.type === 'error') {
-        const lastMsg = agentStore.messages[agentStore.messages.length - 1]
-        lastMsg.content = data.content
-        lastMsg.loading = false
-        lastMsg.error = true
-      }
-    },
-    onDone: () => {
-      const lastMsg = agentStore.messages[agentStore.messages.length - 1]
-      if (lastMsg.loading) {
-        lastMsg.loading = false
-      }
-      agentStore.setLoading(false)
-      agentStore.abortController = null
-    },
-    onError: (err) => {
-      const lastMsg = agentStore.messages[agentStore.messages.length - 1]
-      lastMsg.content = `抱歉，处理出错了：${err.message}`
-      lastMsg.loading = false
-      lastMsg.error = true
-      agentStore.setLoading(false)
-      agentStore.abortController = null
-      ElMessage.error('对话请求失败，请重试')
-    },
-  })
-
-  // 保存中断函数到 store
-  agentStore.abortController = stop
+/** 出错后重新发送同一请求（沿用原有 session_id / 附件路径，不重复上传文件） */
+function retryMessage(assistantMsg) {
+  if (!assistantMsg.retryPayload || agentStore.isLoading) return
+  runChatStream(assistantMsg.retryPayload, assistantMsg)
 }
 
 /** 停止生成 */
@@ -279,8 +391,34 @@ function handleStop() {
   const lastMsg = agentStore.messages[agentStore.messages.length - 1]
   if (lastMsg?.loading) {
     lastMsg.loading = false
+    lastMsg.statusText = ''
     lastMsg.content += '\n[已停止生成]'
   }
+}
+
+/** 清空当前对话记忆并开启新会话 */
+async function handleNewChat() {
+  if (agentStore.messages.length === 0) return
+  try {
+    await ElMessageBox.confirm('确定要清空当前对话吗？清空后无法恢复上下文记忆。', '清空对话', {
+      confirmButtonText: '清空',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+
+  if (agentStore.currentSessionId) {
+    try {
+      await clearChatSession(agentStore.currentSessionId)
+    } catch (err) {
+      console.warn('[清空会话记忆失败]', err.message || err)
+    }
+  }
+
+  agentStore.newChat()
+  ElMessage.success('对话已清空')
 }
 
 /** 触发文件选择框 */
@@ -339,14 +477,14 @@ async function handleQuickDetect(type) {
       const file = e.target.files[0]
       if (!file) return
 
-      agentStore.addMessage({
+      pushMessage({
         role: 'user',
         content: `[快捷检测] ${file.name}`,
         image: file.name,
         imagePreview: URL.createObjectURL(file),
       })
 
-      agentStore.addMessage({
+      const assistantMsg = pushMessage({
         role: 'assistant',
         content: '正在检测中...',
         loading: true,
@@ -358,21 +496,19 @@ async function handleQuickDetect(type) {
 
       try {
         const result = await detectSingle(formData)
-        const lastMsg = agentStore.messages[agentStore.messages.length - 1]
         if (result.error) {
-          lastMsg.content = `检测失败：${result.error}`
-          lastMsg.error = true
+          assistantMsg.content = `检测失败：${result.error}`
+          assistantMsg.error = true
         } else {
-          lastMsg.content = `检测完成！发现 ${result.total_objects ?? 0} 个目标。`
-          lastMsg.detectionResult = result
+          assistantMsg.content = `检测完成！发现 ${result.total_objects ?? 0} 个目标。`
+          assistantMsg.detectionResult = result
         }
-        lastMsg.loading = false
+        assistantMsg.loading = false
       } catch (err) {
         console.error('[单图检测异常]', err)
-        const lastMsg = agentStore.messages[agentStore.messages.length - 1]
-        lastMsg.content = `检测失败：${err.response?.data?.detail || err.message || '请重试'}`
-        lastMsg.loading = false
-        lastMsg.error = true
+        assistantMsg.content = `检测失败：${err.response?.data?.detail || err.message || '请重试'}`
+        assistantMsg.loading = false
+        assistantMsg.error = true
       }
       scrollToBottom()
     }
@@ -391,21 +527,21 @@ async function handleQuickDetect(type) {
 
       if (isZip && files.length === 1) {
         formData.append('file', files[0])
-        agentStore.addMessage({
+        pushMessage({
           role: 'user',
           content: `[快捷检测] ZIP：${files[0].name}`,
         })
       } else {
         files.forEach((f) => formData.append('files', f))
         const imagePreviews = files.map((f) => URL.createObjectURL(f))
-        agentStore.addMessage({
+        pushMessage({
           role: 'user',
           content: `[快捷检测] ${files.length} 张图片`,
           images: imagePreviews,
         })
       }
 
-      agentStore.addMessage({
+      const assistantMsg = pushMessage({
         role: 'assistant',
         content: '正在批量检测中...',
         loading: true,
@@ -415,25 +551,23 @@ async function handleQuickDetect(type) {
       try {
         const apiCall = isZip ? detectZip(formData) : detectBatch(formData)
         const result = await apiCall
-        const lastMsg = agentStore.messages[agentStore.messages.length - 1]
 
         if (result.error) {
-          lastMsg.content = `批量检测失败：${result.error}`
-          lastMsg.loading = false
-          lastMsg.error = true
+          assistantMsg.content = `批量检测失败：${result.error}`
+          assistantMsg.loading = false
+          assistantMsg.error = true
           return
         }
 
         const totalObjects = result.total_objects ?? 0
-        lastMsg.content = `批量检测完成！共 ${totalObjects} 个目标。`
-        lastMsg.loading = false
-        lastMsg.detectionResult = result
+        assistantMsg.content = `批量检测完成！共 ${totalObjects} 个目标。`
+        assistantMsg.loading = false
+        assistantMsg.detectionResult = result
       } catch (err) {
         console.error('[批量检测异常]', err)
-        const lastMsg = agentStore.messages[agentStore.messages.length - 1]
-        lastMsg.content = `批量检测失败：${err.response?.data?.detail || err.message || '请重试'}`
-        lastMsg.loading = false
-        lastMsg.error = true
+        assistantMsg.content = `批量检测失败：${err.response?.data?.detail || err.message || '请重试'}`
+        assistantMsg.loading = false
+        assistantMsg.error = true
       }
       scrollToBottom()
     }
@@ -467,15 +601,13 @@ async function handleVideoDetect() {
     // 创建视频的 Blob URL 用于预览
     const videoUrl = URL.createObjectURL(file)
 
-    // 添加用户消息
-    agentStore.addMessage({
+    pushMessage({
       role: 'user',
       content: `[视频检测] ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)}MB)`,
       videoUrl,
     })
 
-    // 添加加载占位
-    agentStore.addMessage({
+    const assistantMsg = pushMessage({
       role: 'assistant',
       content: '正在上传视频...',
       loading: true,
@@ -490,18 +622,15 @@ async function handleVideoDetect() {
       const uploadResult = await detectVideo(formData)
       const taskId = uploadResult.task_id
 
-      // 更新加载消息
-      const lastMsg = agentStore.messages[agentStore.messages.length - 1]
-      lastMsg.content = '视频已上传，正在处理中...'
+      assistantMsg.content = '视频已上传，正在处理中...'
 
       // 开始轮询进度
-      await pollVideoProgress(taskId)
+      await pollVideoProgress(taskId, assistantMsg)
     } catch (err) {
       console.error('[视频检测失败]', err)
-      const lastMsg = agentStore.messages[agentStore.messages.length - 1]
-      lastMsg.content = `视频检测失败：${err.response?.data?.detail || err.message || '请重试'}`
-      lastMsg.loading = false
-      lastMsg.error = true
+      assistantMsg.content = `视频检测失败：${err.response?.data?.detail || err.message || '请重试'}`
+      assistantMsg.loading = false
+      assistantMsg.error = true
     }
     scrollToBottom()
   }
@@ -511,36 +640,35 @@ async function handleVideoDetect() {
 /**
  * 轮询视频检测进度
  * @param {number} taskId - 视频检测任务 ID
+ * @param {Object} assistantMsg - 承载检测状态的 AI 消息对象
  * @param {number} intervalMs - 轮询间隔（毫秒）
  * @param {number} maxAttempts - 最大轮询次数（防止无限轮询）
  */
-async function pollVideoProgress(taskId, intervalMs = 1500, maxAttempts = 120) {
-  const lastMsg = agentStore.messages[agentStore.messages.length - 1]
-
+async function pollVideoProgress(taskId, assistantMsg, intervalMs = 1500, maxAttempts = 120) {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const status = await getVideoStatus(taskId)
 
       if (status.status === 'completed') {
         const result = status.result || {}
-        lastMsg.content = status.message || `视频检测完成！共发现 ${result.total_objects ?? 0} 个目标。`
-        lastMsg.detectionResult = { ...result, type: 'video' }
-        lastMsg.loading = false
+        assistantMsg.content = status.message || `视频检测完成！共发现 ${result.total_objects ?? 0} 个目标。`
+        assistantMsg.detectionResult = { ...result, type: 'video' }
+        assistantMsg.loading = false
         scrollToBottom()
         return
       }
 
       if (status.status === 'failed') {
-        lastMsg.content = `视频检测失败：${status.message || '未知错误'}`
-        lastMsg.loading = false
-        lastMsg.error = true
+        assistantMsg.content = `视频检测失败：${status.message || '未知错误'}`
+        assistantMsg.loading = false
+        assistantMsg.error = true
         scrollToBottom()
         return
       }
 
       // 仍在处理中，更新进度提示
       const progress = status.progress ?? 0
-      lastMsg.content = `视频处理中...${progress ? ` (${progress}%)` : ''}`
+      assistantMsg.content = `视频处理中...${progress ? ` (${progress}%)` : ''}`
       scrollToBottom()
     } catch (err) {
       console.error('[视频进度查询失败]', err)
@@ -550,19 +678,19 @@ async function pollVideoProgress(taskId, intervalMs = 1500, maxAttempts = 120) {
   }
 
   // 超过最大轮询次数仍未完成
-  lastMsg.content = '视频处理超时，请稍后在历史记录中查看结果'
-  lastMsg.loading = false
-  lastMsg.error = true
+  assistantMsg.content = '视频处理超时，请稍后在历史记录中查看结果'
+  assistantMsg.loading = false
+  assistantMsg.error = true
   scrollToBottom()
 }
 
 onMounted(() => {
   // 页面加载时显示欢迎消息
   if (agentStore.messages.length === 0) {
-    agentStore.addMessage({
+    pushMessage({
       role: 'assistant',
       content:
-        '你好！我是 RSOD 目标检测智能体助手。\n\n你可以：\n- 上传一张图片，让我帮你检测目标\n- 使用下方的快捷按钮直接触发检测\n- 用自然语言描述你的需求\n\n试试发一张图片给我吧！',
+        '你好！我是 PCB 缺陷检测智能助手。\n\n你可以：\n- 上传一张 PCB 图片，让我帮你检测缺陷\n- 使用下方的快捷按钮直接触发检测\n- 用自然语言描述你的需求（例如“今天检测了多少次？”“什么是 IoU？”）\n\n试试发一张图片给我吧！',
     })
   }
 })
@@ -621,7 +749,6 @@ onMounted(() => {
 
   &.is-error {
     border-color: $danger-color;
-    color: $danger-color;
   }
 }
 
@@ -654,6 +781,11 @@ onMounted(() => {
     padding: 2px 4px;
     border-radius: 3px;
   }
+  :deep(img) {
+    max-width: 100%;
+    border-radius: $border-radius-sm;
+    margin: $spacing-xs 0;
+  }
 }
 
 .typing-indicator {
@@ -677,18 +809,108 @@ onMounted(() => {
   }
 }
 
-/* ── 工具调用信息 ── */
-.tool-call-info {
+/* ── Agent 思考过程提示 ── */
+.thinking-hint {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  color: $text-secondary;
+  font-size: 13px;
+
+  .is-loading {
+    animation: rotating 1s linear infinite;
+  }
+}
+
+/* ── 工具调用可视化 ── */
+.tool-calls {
+  margin-top: $spacing-sm;
+  padding: $spacing-xs $spacing-sm;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: $border-radius-sm;
+  border: 1px solid #e4e7ed;
+}
+
+.tool-call-item {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  padding: 4px 0;
+  font-size: 13px;
+  color: $text-regular;
+
+  &.is-loading {
+    color: $primary-color;
+  }
+
+  .is-loading {
+    animation: rotating 1s linear infinite;
+  }
+
+  .tool-name {
+    font-weight: 600;
+  }
+
+  .tool-arrow {
+    color: $text-secondary;
+  }
+
+  .tool-summary {
+    color: $text-secondary;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 260px;
+
+    &.success {
+      color: $success-color;
+    }
+
+    &.error {
+      color: $danger-color;
+    }
+  }
+}
+
+/* ── 知识库检索标注 ── */
+.knowledge-badge {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  margin-top: $spacing-sm;
+  padding: 4px $spacing-sm;
+  border-radius: $border-radius-sm;
+  font-size: 12px;
+  width: fit-content;
+
+  &.success {
+    background: rgba(103, 194, 58, 0.1);
+    color: $success-color;
+  }
+
+  &.empty {
+    background: rgba(144, 147, 153, 0.1);
+    color: $text-secondary;
+  }
+}
+
+/* ── 出错重试 ── */
+.error-retry {
   margin-top: $spacing-sm;
 }
 
 /* ── 快捷操作栏 ── */
 .quick-actions {
   display: flex;
+  align-items: center;
   gap: $spacing-sm;
   padding: $spacing-sm $spacing-lg;
   border-top: 1px solid #ebeef5;
   background: #fff;
+}
+
+.quick-actions-spacer {
+  flex: 1;
 }
 
 /* ── 输入区域 ── */
@@ -804,6 +1026,15 @@ onMounted(() => {
   30% {
     opacity: 1;
     transform: translateY(-4px);
+  }
+}
+
+@keyframes rotating {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 </style>
