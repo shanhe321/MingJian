@@ -131,6 +131,31 @@ class RedisClient:
 
         return self._retry_on_fail(operation)
 
+    def rpush(self, name: str, *values: Any) -> Any:
+        def operation():
+            if self._use_redis:
+                return self._client.rpush(name, *values)
+            items = self._memory_cache.setdefault(name, [])
+            items.extend(values)
+            return len(items)
+
+        return self._retry_on_fail(operation)
+
+    def lrange(self, name: str, start: int = 0, end: int = -1) -> list:
+        def operation():
+            if self._use_redis:
+                return self._client.lrange(name, start, end)
+            items = self._memory_cache.get(name, [])
+            stop = None if end == -1 else end + 1
+            return list(items[start:stop])
+
+        return self._retry_on_fail(operation)
+
+    def expire(self, name: str, seconds: int) -> Any:
+        return self._retry_on_fail(
+            lambda: self._client.expire(name, seconds) if self._use_redis else True
+        )
+
     def rpop(self, name: str) -> Optional[Any]:
         return self._retry_on_fail(
             lambda: self._client.rpop(name)
