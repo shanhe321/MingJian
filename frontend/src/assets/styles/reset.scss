@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════
 // CSS 样式重置
 // ═══════════════════════════════════════════════════════
-
+@use './variables' as *;
 * {
   margin: 0;
   padding: 0;
@@ -14,7 +14,8 @@ html, body {
   font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
     'Microsoft YaHei', Arial, sans-serif;
   font-size: 14px;
-  color: #303133;
+  color: $text-primary;
+  background: $bg-color-dark;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

@@ -26,6 +26,7 @@ import AppSidebar from './AppSidebar.vue'
   height: 100%;
   display: flex;
   flex-direction: column;
+  background: $bg-color-dark;
 }
 
 .layout-body {
@@ -36,8 +37,11 @@ import AppSidebar from './AppSidebar.vue'
 
 .layout-content {
   flex: 1;
-  background: $bg-color;
+  min-width: 0;
+  background:
+    radial-gradient(circle at 50% 0, rgba(139, 92, 246, 0.07), transparent 32rem),
+    $bg-color;
   overflow-y: auto;
-  padding: $spacing-lg;
+  padding: $spacing-lg $spacing-xl;
 }
 </style>

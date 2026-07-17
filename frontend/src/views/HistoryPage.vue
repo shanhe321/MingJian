@@ -2,6 +2,10 @@
   <div class="history-page">
     <!-- ── 页面标题 ── -->
     <div class="page-header">
+      <div class="page-title-copy">
+        <h2>历史记录</h2>
+        <p>查询、筛选和查看过去的检测任务</p>
+      </div>
       <h2>历史记录</h2>
       <el-button text @click="fetchList">
         <el-icon><Refresh /></el-icon>刷新
@@ -360,26 +364,64 @@ onMounted(() => {
 <style lang="scss" scoped>
 .history-page {
   padding: 0;
+  color: $text-regular;
+  max-width: $page-max-width;
+  margin: 0 auto;
 }
 
 .page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  gap: $spacing-lg;
+  margin-bottom: $spacing-lg;
 
-  h2 {
-    margin: 0;
+  > h2 {
+    display: none;
   }
+}
+
+.page-title-copy h2 {
+  margin: 0;
+  color: $text-primary;
+  font-size: 26px;
+  font-weight: 650;
+}
+
+.page-title-copy p {
+  margin: 6px 0 0;
+  color: $text-secondary;
+  font-size: 14px;
 }
 
 .filter-card {
   margin-bottom: 16px;
+  border-radius: $border-radius-lg;
+  background: rgba(24, 29, 36, 0.62);
 
   .filter-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $spacing-sm;
+
     :deep(.el-form-item) {
       margin-bottom: 0;
     }
+  }
+}
+
+.table-card {
+  border-radius: $border-radius-lg;
+  background: rgba(24, 29, 36, 0.72);
+
+  :deep(.el-table) {
+    --el-table-header-bg-color: transparent;
+    --el-table-tr-bg-color: transparent;
+    --el-table-row-hover-bg-color: rgba(139, 92, 246, 0.08);
+  }
+
+  :deep(.el-table__empty-block) {
+    min-height: 180px;
   }
 }
 
@@ -395,7 +437,7 @@ onMounted(() => {
   h4 {
     margin: 0 0 10px;
     font-size: 14px;
-    color: #303133;
+    color: $text-primary;
   }
 
   .class-tag {
@@ -409,11 +451,18 @@ onMounted(() => {
   h4 {
     margin: 0 0 10px;
     font-size: 14px;
-    color: #303133;
+    color: $text-primary;
   }
 }
 
 .error-text {
-  color: #f56c6c;
+  color: #fca5a5;
+}
+
+@media (max-width: 760px) {
+  .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>
