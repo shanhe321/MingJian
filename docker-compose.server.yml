@@ -25,7 +25,7 @@ services:
 
   # ======================== 前端服务 ========================
   frontend:
-    image: ghcr.io/heyebing/rsod-frontend:latest
+    image: ghcr.io/shanhe321/rsod-frontend:latest
     container_name: rsod-frontend
     ports:
       - "80:80"
@@ -56,7 +56,7 @@ services:
 
   # ======================== 后端服务 ========================
   backend:
-    image: ghcr.io/heyebing/rsod-backend:latest
+    image: ghcr.io/shanhe321/rsod-backend:latest
     container_name: rsod-backend
     ports:
       - "8000:8000"
