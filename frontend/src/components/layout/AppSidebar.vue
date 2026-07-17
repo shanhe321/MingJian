@@ -57,12 +57,16 @@ const menuItems = [
 .app-sidebar {
   width: $sidebar-width;
   height: 100%;
-  background: $sidebar-bg;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(246, 249, 255, 0.76)),
+    $sidebar-bg;
   border-right: 1px solid $border-color;
   display: flex;
   flex-direction: column;
   align-items: center;
   overflow: hidden;
+  box-shadow: 10px 0 32px rgba(40, 58, 96, 0.05);
+  backdrop-filter: blur(18px) saturate(1.08);
 }
 
 .sidebar-nav {
@@ -94,19 +98,26 @@ const menuItems = [
 
   &:hover,
   &:focus-visible {
-    background: rgba(255, 255, 255, 0.06);
+    background:
+      linear-gradient(135deg, rgba(91, 124, 250, 0.1), rgba(139, 92, 246, 0.08));
     color: $text-primary;
+    transform: translateY(-1px);
   }
 
   &:focus-visible {
     border-color: $border-color-strong;
-    box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.28);
+    box-shadow: 0 0 0 2px rgba(91, 124, 250, 0.16);
   }
 
   &.is-active {
-    background: rgba(139, 92, 246, 0.18);
-    border-color: rgba(167, 139, 250, 0.32);
+    background:
+      linear-gradient(135deg, rgba(91, 124, 250, 0.18), rgba(139, 92, 246, 0.14)),
+      rgba(255, 255, 255, 0.76);
+    border-color: rgba(91, 124, 250, 0.24);
     color: $sidebar-active-text;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.74),
+      0 10px 24px rgba(91, 124, 250, 0.14);
 
     &::before {
       content: '';
@@ -116,7 +127,7 @@ const menuItems = [
       height: 20px;
       border-radius: 999px;
       background: linear-gradient(180deg, $primary-color-light, $primary-color);
-      box-shadow: 0 0 16px rgba(139, 92, 246, 0.48);
+      box-shadow: 0 0 14px rgba(91, 124, 250, 0.26);
     }
   }
 }
@@ -128,7 +139,8 @@ const menuItems = [
 .sidebar-footer {
   width: 100%;
   padding: $spacing-sm 0 $spacing-md;
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  background: linear-gradient(180deg, transparent, rgba(91, 124, 250, 0.035));
 }
 
 .sr-only {

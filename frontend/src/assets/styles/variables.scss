@@ -3,31 +3,31 @@
 // ═══════════════════════════════════════════════════════
 
 // ── 主题色 ──────────────────────────────────────────
-$primary-color: #8b5cf6;
-$primary-color-light: #a78bfa;
-$primary-color-dark: #6d28d9;
-$success-color: #22c55e;
-$warning-color: #f59e0b;
-$danger-color: #ef4444;
-$info-color: #94a3b8;
+$primary-color: #5b7cfa;
+$primary-color-light: #8b5cf6;
+$primary-color-dark: #425ee8;
+$success-color: #16a368;
+$warning-color: #d99018;
+$danger-color: #dc5a5a;
+$info-color: #667085;
 
 // ── 背景色 ──────────────────────────────────────────
-$bg-color: #13171d;
-$bg-color-dark: #101318;
-$surface-color: #181d24;
-$surface-color-soft: #1e242d;
-$surface-color-elevated: #262d37;
-$border-color: rgba(148, 163, 184, 0.16);
-$border-color-strong: rgba(167, 139, 250, 0.34);
-$sidebar-bg: #0c0f14;
-$sidebar-text: #9ca3af;
-$sidebar-active-text: #f4f0ff;
+$bg-color: #f8fbff;
+$bg-color-dark: #f5f7fc;
+$surface-color: #ffffff;
+$surface-color-soft: #f3f7fd;
+$surface-color-elevated: #eef4fc;
+$border-color: rgba(207, 216, 230, 0.78);
+$border-color-strong: rgba(91, 124, 250, 0.28);
+$sidebar-bg: rgba(255, 255, 255, 0.78);
+$sidebar-text: #64748b;
+$sidebar-active-text: #4f46e5;
 
 // ── 文字色 ──────────────────────────────────────────
-$text-primary: #eef1f6;
-$text-regular: #d7dce5;
-$text-secondary: #aeb5c0;
-$text-placeholder: #737c89;
+$text-primary: #1f2937;
+$text-regular: #344054;
+$text-secondary: #667085;
+$text-placeholder: #98a2b3;
 
 // ── 布局尺寸 ────────────────────────────────────────
 $header-height: 56px;
@@ -54,6 +54,6 @@ $border-radius-md: 8px;
 $border-radius-lg: 12px;
 
 // ── 阴影 ────────────────────────────────────────────
-$shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
-$shadow-md: 0 8px 24px rgba(0, 0, 0, 0.28);
-$shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.34);
+$shadow-sm: 0 10px 28px rgba(40, 58, 96, 0.07);
+$shadow-md: 0 18px 48px rgba(40, 58, 96, 0.1);
+$shadow-lg: 0 28px 76px rgba(40, 58, 96, 0.14);

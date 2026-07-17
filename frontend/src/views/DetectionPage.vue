@@ -531,16 +531,29 @@ onBeforeUnmount(() => {
   position: relative;
   aspect-ratio: 16 / 9;
   min-height: 0;
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(203, 213, 225, 0.78);
   border-radius: $border-radius-lg;
   background:
-    radial-gradient(circle at 50% 24%, rgba(139, 92, 246, 0.14), transparent 28rem),
+    radial-gradient(circle at 50% 24%, rgba(91, 124, 250, 0.18), transparent 24rem),
+    radial-gradient(circle at 44% 48%, rgba(139, 92, 246, 0.12), transparent 18rem),
     linear-gradient(145deg, #090d13 0%, #111720 100%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  box-shadow:
+    0 24px 60px rgba(40, 58, 96, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 12px;
+    border-radius: calc(#{$border-radius-lg} - 4px);
+    border: 1px solid rgba(91, 124, 250, 0.12);
+    pointer-events: none;
+    z-index: 1;
+  }
 }
 
 .preview-canvas {
@@ -616,14 +629,18 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: $spacing-sm;
   padding: $spacing-md;
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  border: 1px solid $border-color;
   border-radius: $border-radius-lg;
-  background: rgba(23, 28, 35, 0.78);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 251, 255, 0.86));
+  box-shadow:
+    $shadow-sm,
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
 .panel-section {
   padding-bottom: $spacing-sm;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid $border-color;
 
   &:last-child {
     padding-bottom: 0;
@@ -672,7 +689,7 @@ onBeforeUnmount(() => {
 
 .status-error {
   margin: $spacing-xs 0 0;
-  color: #fca5a5;
+  color: $danger-color;
   font-size: 12px;
   line-height: 1.5;
 }
@@ -684,9 +701,10 @@ onBeforeUnmount(() => {
   gap: 8px;
   width: 100%;
   height: 40px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  border: 1px solid $border-color;
   border-radius: $border-radius-md;
-  background: rgba(28, 34, 43, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(241, 245, 251, 0.76));
   color: $text-primary;
   cursor: pointer;
   font-weight: 600;
@@ -698,7 +716,10 @@ onBeforeUnmount(() => {
   &:hover,
   &:focus-visible {
     border-color: $border-color-strong;
-    background: rgba(35, 42, 53, 0.92);
+    background:
+      linear-gradient(135deg, rgba(91, 124, 250, 0.08), rgba(139, 92, 246, 0.06)),
+      #fff;
+    box-shadow: 0 10px 24px rgba(91, 124, 250, 0.1);
     outline: none;
 
     .action-dot {
@@ -712,9 +733,9 @@ onBeforeUnmount(() => {
   }
 
   &.is-stop {
-    border-color: rgba(239, 68, 68, 0.24);
-    background: rgba(239, 68, 68, 0.1);
-    color: #fecaca;
+    border-color: rgba(220, 90, 90, 0.24);
+    background: rgba(254, 242, 242, 0.9);
+    color: $danger-color;
 
     .action-dot {
       background: $danger-color;
@@ -723,7 +744,7 @@ onBeforeUnmount(() => {
     &:hover,
     &:focus-visible {
       border-color: rgba(248, 113, 113, 0.42);
-      background: rgba(239, 68, 68, 0.14);
+      background: rgba(254, 226, 226, 0.92);
     }
   }
 }
@@ -796,10 +817,12 @@ onBeforeUnmount(() => {
 .stats-card,
 .detections-card,
 .distribution-card {
-  --el-card-bg-color: rgba(23, 28, 35, 0.82);
-  border-color: rgba(148, 163, 184, 0.12);
+  --el-card-bg-color: rgba(255, 255, 255, 0.9);
+  border-color: #{$border-color};
   border-radius: $border-radius-lg;
-  box-shadow: none;
+  box-shadow:
+    $shadow-sm,
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
 
   :deep(.el-card__header) {
@@ -807,7 +830,7 @@ onBeforeUnmount(() => {
     color: $text-primary;
     font-size: 14px;
     font-weight: 600;
-    border-bottom-color: rgba(148, 163, 184, 0.1);
+    border-bottom-color: $border-color;
   }
 
   :deep(.el-card__body) {
@@ -835,13 +858,15 @@ onBeforeUnmount(() => {
 .stat-item {
   min-height: 66px;
   padding: 10px 12px;
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(226, 232, 240, 0.9);
   border-radius: $border-radius-md;
-  background: rgba(28, 34, 43, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(241, 245, 251, 0.78));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
 }
 
 .stat-value {
-  color: $primary-color-light;
+  color: $primary-color-dark;
   font-size: 23px;
   font-weight: 700;
   line-height: 1.1;
@@ -878,7 +903,7 @@ onBeforeUnmount(() => {
   align-items: flex-start;
   gap: $spacing-sm;
   padding: 12px 0;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid $border-color;
 
   &:last-child {
     border-bottom: none;
@@ -916,9 +941,9 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: $spacing-sm;
   padding: 6px 10px;
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(226, 232, 240, 0.9);
   border-radius: 999px;
-  background: rgba(28, 34, 43, 0.7);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .class-name {
@@ -933,27 +958,27 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: $spacing-md;
   padding: $spacing-md;
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  border: 1px solid $border-color;
   border-radius: $border-radius-lg;
-  background: rgba(23, 28, 35, 0.78);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(10px);
 }
 
 .control-bar :deep(.el-divider--vertical) {
-  border-left-color: rgba(148, 163, 184, 0.16);
+  border-left-color: $border-color;
 }
 
 .control-bar :deep(.el-radio-button__inner) {
-  background: rgba(28, 34, 43, 0.72);
-  border-color: rgba(148, 163, 184, 0.16);
+  background: $surface-color-soft;
+  border-color: $border-color;
   color: $text-secondary;
 }
 
 .control-bar :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
-  background: rgba(139, 92, 246, 0.22);
-  border-color: rgba(167, 139, 250, 0.36);
+  background: rgba(91, 124, 250, 0.12);
+  border-color: rgba(91, 124, 250, 0.28);
   color: $text-primary;
-  box-shadow: -1px 0 0 0 rgba(167, 139, 250, 0.36);
+  box-shadow: -1px 0 0 0 rgba(91, 124, 250, 0.28);
 }
 
 .control-bar :deep(.el-slider) {

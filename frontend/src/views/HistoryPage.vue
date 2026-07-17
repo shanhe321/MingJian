@@ -386,6 +386,17 @@ onMounted(() => {
   color: $text-primary;
   font-size: 26px;
   font-weight: 650;
+  position: relative;
+
+  &::after {
+    content: "";
+    display: block;
+    width: 74px;
+    height: 3px;
+    margin-top: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, $primary-color, $primary-color-light, #48b8f7);
+  }
 }
 
 .page-title-copy p {
@@ -397,7 +408,12 @@ onMounted(() => {
 .filter-card {
   margin-bottom: 16px;
   border-radius: $border-radius-lg;
-  background: rgba(24, 29, 36, 0.62);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 251, 255, 0.82));
+  border-color: $border-color;
+  box-shadow:
+    $shadow-sm,
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
 
   .filter-form {
     display: flex;
@@ -412,12 +428,17 @@ onMounted(() => {
 
 .table-card {
   border-radius: $border-radius-lg;
-  background: rgba(24, 29, 36, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.88));
+  border-color: $border-color;
+  box-shadow:
+    $shadow-sm,
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
 
   :deep(.el-table) {
     --el-table-header-bg-color: transparent;
     --el-table-tr-bg-color: transparent;
-    --el-table-row-hover-bg-color: rgba(139, 92, 246, 0.08);
+    --el-table-row-hover-bg-color: rgba(91, 124, 250, 0.06);
   }
 
   :deep(.el-table__empty-block) {
@@ -456,7 +477,7 @@ onMounted(() => {
 }
 
 .error-text {
-  color: #fca5a5;
+  color: $danger-color;
 }
 
 @media (max-width: 760px) {

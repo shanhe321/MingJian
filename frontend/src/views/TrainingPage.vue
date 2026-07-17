@@ -462,7 +462,7 @@ const taskOverviewCards = computed(() => {
     { label: '当前任务', value: selectedTask.value?.task_uuid?.slice(0, 8) || '-' },
   ]
 })
-const CHART_THEME = 'dark'
+const CHART_THEME = undefined
 
 // ── 当前任务的完整指标历史（用于图表 + 最新指标卡片）──
 const taskMetrics = ref([])
@@ -516,22 +516,22 @@ const evalMetricCards = computed(() => {
     {
       label: 'Precision',
       value: o.precision != null ? (o.precision * 100).toFixed(1) + '%' : '-',
-      color: o.precision > 0.7 ? '#67c23a' : '#e6a23c',
+      color: o.precision > 0.7 ? '#16a368' : '#d99018',
     },
     {
       label: 'Recall',
       value: o.recall != null ? (o.recall * 100).toFixed(1) + '%' : '-',
-      color: o.recall > 0.7 ? '#67c23a' : '#e6a23c',
+      color: o.recall > 0.7 ? '#16a368' : '#d99018',
     },
     {
       label: 'mAP@50',
       value: o.map50 != null ? (o.map50 * 100).toFixed(1) + '%' : '-',
-      color: o.map50 > 0.5 ? '#67c23a' : '#f56c6c',
+      color: o.map50 > 0.5 ? '#16a368' : '#dc5a5a',
     },
     {
       label: 'mAP@50-95',
       value: o.map50_95 != null ? (o.map50_95 * 100).toFixed(1) + '%' : '-',
-      color: o.map50_95 > 0.3 ? '#67c23a' : '#f56c6c',
+      color: o.map50_95 > 0.3 ? '#16a368' : '#dc5a5a',
     },
   ]
 })
@@ -703,32 +703,32 @@ function updateCharts(metrics) {
           type: 'line',
           data: metrics.map((m) => m.map50),
           smooth: true,
-          lineStyle: { width: 2, color: '#409eff' },
-          itemStyle: { color: '#409eff' },
+          lineStyle: { width: 2, color: '#5b7cfa' },
+          itemStyle: { color: '#5b7cfa' },
         },
         {
           name: 'mAP@50-95',
           type: 'line',
           data: metrics.map((m) => m.map50_95),
           smooth: true,
-          lineStyle: { width: 2, color: '#67c23a' },
-          itemStyle: { color: '#67c23a' },
+          lineStyle: { width: 2, color: '#8b5cf6' },
+          itemStyle: { color: '#8b5cf6' },
         },
         {
           name: 'Precision',
           type: 'line',
           data: metrics.map((m) => m.precision),
           smooth: true,
-          lineStyle: { width: 2, type: 'dashed', color: '#e6a23c' },
-          itemStyle: { color: '#e6a23c' },
+          lineStyle: { width: 2, type: 'dashed', color: '#48b8f7' },
+          itemStyle: { color: '#48b8f7' },
         },
         {
           name: 'Recall',
           type: 'line',
           data: metrics.map((m) => m.recall),
           smooth: true,
-          lineStyle: { width: 2, type: 'dashed', color: '#f56c6c' },
-          itemStyle: { color: '#f56c6c' },
+          lineStyle: { width: 2, type: 'dashed', color: '#d99018' },
+          itemStyle: { color: '#d99018' },
         },
       ],
     })
@@ -908,6 +908,17 @@ onBeforeUnmount(() => {
   font-size: 26px;
   color: $text-primary;
   font-weight: 650;
+  position: relative;
+
+  &::after {
+    content: "";
+    display: block;
+    width: 74px;
+    height: 3px;
+    margin-top: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, $primary-color, $primary-color-light, #48b8f7);
+  }
 }
 
 .page-title-copy p {
@@ -926,9 +937,13 @@ onBeforeUnmount(() => {
 .overview-item {
   min-height: 78px;
   padding: 14px 16px;
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid $border-color;
   border-radius: $border-radius-lg;
-  background: rgba(24, 29, 36, 0.7);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.86));
+  box-shadow:
+    $shadow-sm,
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
 
   span {
     display: block;
@@ -966,7 +981,9 @@ onBeforeUnmount(() => {
   text-align: center;
   padding: 8px 0;
   border-radius: $border-radius-md;
-  background: rgba(28, 34, 43, 0.72);
+  background:
+    radial-gradient(circle at 80% 0, rgba(91, 124, 250, 0.08), transparent 38%),
+    $surface-color-soft;
 
   :deep(.el-card__body) {
     padding: 16px 12px;
@@ -991,13 +1008,18 @@ onBeforeUnmount(() => {
 .eval-card {
   margin-bottom: 20px;
   border-radius: $border-radius-lg;
-  background: rgba(24, 29, 36, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.88));
+  border-color: $border-color;
+  box-shadow:
+    $shadow-sm,
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
 .task-list-card :deep(.el-table) {
   --el-table-header-bg-color: transparent;
   --el-table-tr-bg-color: transparent;
-  --el-table-row-hover-bg-color: rgba(139, 92, 246, 0.08);
+  --el-table-row-hover-bg-color: rgba(91, 124, 250, 0.06);
 }
 
 .task-list-card :deep(.el-table__empty-block) {
@@ -1011,22 +1033,22 @@ onBeforeUnmount(() => {
 .predict-upload :deep(.el-upload-dragger) {
   width: 100%;
   padding: 20px;
-  border-color: rgba(148, 163, 184, 0.16);
-  background: rgba(28, 34, 43, 0.72);
+  border-color: $border-color;
+  background: $surface-color-soft;
   color: $text-secondary;
 
   &:hover {
     border-color: $border-color-strong;
-    background: rgba(35, 42, 53, 0.82);
+    background: #fff;
   }
 }
 
 .weak-hint {
   margin-top: 16px;
   padding: 10px 12px;
-  border: 1px solid rgba(239, 68, 68, 0.22);
-  background-color: rgba(239, 68, 68, 0.12);
-  color: #fca5a5;
+  border: 1px solid rgba(220, 90, 90, 0.24);
+  background-color: rgba(254, 242, 242, 0.9);
+  color: $danger-color;
   border-radius: $border-radius-md;
   font-size: 13px;
   display: flex;
@@ -1035,11 +1057,11 @@ onBeforeUnmount(() => {
 }
 
 :deep(.weak-row) {
-  background-color: rgba(239, 68, 68, 0.1) !important;
+  background-color: rgba(254, 242, 242, 0.9) !important;
 }
 
 :deep(.weak-row td) {
-  color: #fca5a5 !important;
+  color: $danger-color !important;
 }
 
 @media (max-width: 900px) {

@@ -249,6 +249,17 @@ onMounted(() => {
     color: $text-primary;
     font-size: 26px;
     font-weight: 650;
+    position: relative;
+
+    &::after {
+      content: "";
+      display: block;
+      width: 74px;
+      height: 3px;
+      margin-top: 10px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, $primary-color, $primary-color-light, #48b8f7);
+    }
   }
 
   .page-title-copy p {
@@ -274,7 +285,12 @@ onMounted(() => {
 
   :deep(.el-card) {
     border-radius: $border-radius-lg;
-    background: rgba(24, 29, 36, 0.72);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.88));
+    border-color: $border-color;
+    box-shadow:
+      $shadow-sm,
+      inset 0 1px 0 rgba(255, 255, 255, 0.95);
   }
 
   :deep(.el-card__body) {
@@ -313,7 +329,7 @@ onMounted(() => {
 
   :deep(.el-descriptions__content) {
     color: $text-primary;
-    background: rgba(30, 36, 45, 0.68);
+    background: $surface-color-soft;
     border-radius: $border-radius-md;
   }
 }
