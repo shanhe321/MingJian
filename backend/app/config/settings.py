@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET: str = "rsod-agent-images"
     MINIO_SECURE: bool = False
+    # 浏览器访问 MinIO 的公网地址（不设置则回退到 MINIO_ENDPOINT）
+    MINIO_PUBLIC_ENDPOINT: str = ""
 
     # ── JWT 认证配置 ──────────────────────────────────
     JWT_SECRET_KEY: str = "your-super-secret-key-change-in-production"

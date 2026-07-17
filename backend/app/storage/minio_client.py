@@ -70,13 +70,17 @@ class MinIOClient:
         return self.get_presigned_url(object_name)
 
     def get_presigned_url(self, object_name: str) -> str:
-        """获取对象的预签名访问 URL（有效期 7 天）"""
+        """获取对象的预签名访问 URL（有效期 7 天），自动替换为公网地址"""
         from datetime import timedelta
         url = self.client.presigned_get_object(
             bucket_name=self.bucket_name,
             object_name=object_name,
             expires=timedelta(days=7),
         )
+        # 如果配置了公网端点，替换掉内网地址，使浏览器可访问
+        public_endpoint = getattr(settings, 'MINIO_PUBLIC_ENDPOINT', '')
+        if public_endpoint:
+            url = url.replace(settings.MINIO_ENDPOINT, public_endpoint)
         return url
 
     def delete_file(self, object_name: str):
