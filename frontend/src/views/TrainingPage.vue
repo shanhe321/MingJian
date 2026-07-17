@@ -2,6 +2,10 @@
   <div class="training-page">
     <!-- ── 页面标题 ── -->
     <div class="page-header">
+      <div class="page-title-copy">
+        <h2>模型训练</h2>
+        <p>管理训练任务、查看进度并评估模型表现</p>
+      </div>
       <h2>模型训练与监控</h2>
       <el-button type="primary" @click="showCreateDialog = true">
         <el-icon><Plus /></el-icon>新建训练任务
@@ -9,6 +13,13 @@
     </div>
 
     <!-- ── 训练任务列表 ── -->
+    <section class="training-overview" aria-label="训练任务概览">
+      <div v-for="item in taskOverviewCards" :key="item.label" class="overview-item">
+        <span>{{ item.label }}</span>
+        <strong>{{ item.value }}</strong>
+      </div>
+    </section>
+
     <el-card class="task-list-card" shadow="never">
       <template #header>
         <div class="card-header">
@@ -440,6 +451,18 @@ const lossChartRef = ref(null)
 const mapChartRef = ref(null)
 let lossChart = null
 let mapChart = null
+const taskOverviewCards = computed(() => {
+  const total = taskList.value.length
+  const running = taskList.value.filter((task) => ['pending', 'running'].includes(task.status)).length
+  const completed = taskList.value.filter((task) => task.status === 'completed').length
+  return [
+    { label: '全部任务', value: total },
+    { label: '进行中', value: running },
+    { label: '已完成', value: completed },
+    { label: '当前任务', value: selectedTask.value?.task_uuid?.slice(0, 8) || '-' },
+  ]
+})
+const CHART_THEME = 'dark'
 
 // ── 当前任务的完整指标历史（用于图表 + 最新指标卡片）──
 const taskMetrics = ref([])
@@ -589,10 +612,10 @@ function initCharts() {
   if (mapChart) mapChart.dispose()
 
   if (lossChartRef.value) {
-    lossChart = echarts.init(lossChartRef.value)
+    lossChart = echarts.init(lossChartRef.value, CHART_THEME)
   }
   if (mapChartRef.value) {
-    mapChart = echarts.init(mapChartRef.value)
+    mapChart = echarts.init(mapChartRef.value, CHART_THEME)
   }
 }
 
@@ -631,6 +654,7 @@ function updateCharts(metrics) {
   // Loss 曲线
   if (lossChart) {
     lossChart.setOption({
+      backgroundColor: 'transparent',
       title: { text: '训练损失曲线', left: 'center', textStyle: { fontSize: 14 } },
       tooltip: { trigger: 'axis' },
       legend: { data: ['Box Loss', 'Cls Loss', 'DFL Loss'], bottom: 0 },
@@ -666,6 +690,7 @@ function updateCharts(metrics) {
   // mAP 曲线
   if (mapChart) {
     mapChart.setOption({
+      backgroundColor: 'transparent',
       title: { text: '评估指标曲线', left: 'center', textStyle: { fontSize: 14 } },
       tooltip: { trigger: 'axis' },
       legend: { data: ['mAP@50', 'mAP@50-95', 'Precision', 'Recall'], bottom: 0 },
@@ -858,21 +883,66 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .training-page {
-  padding: 20px;
+  padding: 0;
+  color: $text-regular;
+  max-width: $page-max-width;
+  margin: 0 auto;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  gap: $spacing-lg;
+  margin-bottom: $spacing-lg;
 }
 
-.page-header h2 {
+.page-header > h2 {
+  display: none;
+}
+
+.page-title-copy h2 {
   margin: 0;
-  font-size: 22px;
+  font-size: 26px;
+  color: $text-primary;
+  font-weight: 650;
+}
+
+.page-title-copy p {
+  margin: 6px 0 0;
+  color: $text-secondary;
+  font-size: 14px;
+}
+
+.training-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+}
+
+.overview-item {
+  min-height: 78px;
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: $border-radius-lg;
+  background: rgba(24, 29, 36, 0.7);
+
+  span {
+    display: block;
+    color: $text-secondary;
+    font-size: 12px;
+  }
+
+  strong {
+    display: block;
+    margin-top: 8px;
+    color: $text-primary;
+    font-size: 22px;
+    font-weight: 700;
+  }
 }
 
 .card-header {
@@ -885,7 +955,7 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 16px;
   font-size: 13px;
-  color: #909399;
+  color: $text-secondary;
 }
 
 .metric-cards {
@@ -895,17 +965,23 @@ onBeforeUnmount(() => {
 .metric-item {
   text-align: center;
   padding: 8px 0;
+  border-radius: $border-radius-md;
+  background: rgba(28, 34, 43, 0.72);
+
+  :deep(.el-card__body) {
+    padding: 16px 12px;
+  }
 }
 
 .metric-value {
   font-size: 20px;
   font-weight: 700;
-  color: #303133;
+  color: $text-primary;
 }
 
 .metric-label {
   font-size: 12px;
-  color: #909399;
+  color: $text-secondary;
   margin-top: 4px;
 }
 
@@ -914,6 +990,18 @@ onBeforeUnmount(() => {
 .action-card,
 .eval-card {
   margin-bottom: 20px;
+  border-radius: $border-radius-lg;
+  background: rgba(24, 29, 36, 0.72);
+}
+
+.task-list-card :deep(.el-table) {
+  --el-table-header-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-row-hover-bg-color: rgba(139, 92, 246, 0.08);
+}
+
+.task-list-card :deep(.el-table__empty-block) {
+  min-height: 180px;
 }
 
 .predict-upload {
@@ -923,14 +1011,23 @@ onBeforeUnmount(() => {
 .predict-upload :deep(.el-upload-dragger) {
   width: 100%;
   padding: 20px;
+  border-color: rgba(148, 163, 184, 0.16);
+  background: rgba(28, 34, 43, 0.72);
+  color: $text-secondary;
+
+  &:hover {
+    border-color: $border-color-strong;
+    background: rgba(35, 42, 53, 0.82);
+  }
 }
 
 .weak-hint {
   margin-top: 16px;
   padding: 10px 12px;
-  background-color: #fef0f0;
-  color: #f56c6c;
-  border-radius: 4px;
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  background-color: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  border-radius: $border-radius-md;
   font-size: 13px;
   display: flex;
   align-items: center;
@@ -938,10 +1035,27 @@ onBeforeUnmount(() => {
 }
 
 :deep(.weak-row) {
-  background-color: #fef0f0 !important;
+  background-color: rgba(239, 68, 68, 0.1) !important;
 }
 
 :deep(.weak-row td) {
-  color: #f56c6c !important;
+  color: #fca5a5 !important;
+}
+
+@media (max-width: 900px) {
+  .training-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .training-overview {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

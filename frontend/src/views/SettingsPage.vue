@@ -1,5 +1,9 @@
 <template>
   <div class="settings-page">
+    <div class="page-title-copy">
+      <h2>系统设置</h2>
+      <p>管理个人资料、账户安全和平台信息</p>
+    </div>
     <h2>系统设置</h2>
 
     <el-row :gutter="24">
@@ -228,12 +232,89 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .settings-page {
-  h2 {
+  color: $text-regular;
+  max-width: 920px;
+  margin: 0 auto;
+
+  > h2 {
+    display: none;
+  }
+
+  .page-title-copy {
+    margin-bottom: $spacing-lg;
+  }
+
+  .page-title-copy h2 {
     margin: 0 0 20px;
+    color: $text-primary;
+    font-size: 26px;
+    font-weight: 650;
+  }
+
+  .page-title-copy p {
+    margin: -12px 0 0;
+    color: $text-secondary;
+    font-size: 14px;
+  }
+
+  :deep(.el-row) {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: $spacing-md;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  :deep(.el-col) {
+    max-width: 100%;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    flex: none;
+  }
+
+  :deep(.el-card) {
+    border-radius: $border-radius-lg;
+    background: rgba(24, 29, 36, 0.72);
+  }
+
+  :deep(.el-card__body) {
+    max-width: 680px;
+  }
+
+  :deep(.el-form-item__content) {
+    max-width: 520px;
   }
 }
 
 .about-card {
-  margin-top: 24px;
+  margin-top: $spacing-md;
+
+  :deep(.el-card__body) {
+    max-width: none;
+  }
+
+  :deep(.el-descriptions__body) {
+    background: transparent;
+  }
+
+  :deep(.el-descriptions__table) {
+    border-collapse: separate;
+    border-spacing: 0 8px;
+  }
+
+  :deep(.el-descriptions__cell) {
+    border: 0;
+  }
+
+  :deep(.el-descriptions__label) {
+    color: $text-secondary;
+    background: transparent;
+  }
+
+  :deep(.el-descriptions__content) {
+    color: $text-primary;
+    background: rgba(30, 36, 45, 0.68);
+    border-radius: $border-radius-md;
+  }
 }
 </style>

@@ -2,6 +2,10 @@
   <div class="dashboard-page">
     <!-- ── 页面标题 + 时间范围选择 ── -->
     <div class="page-header">
+      <div class="page-title-copy">
+        <h2>数据看板</h2>
+        <p>了解检测任务、目标类别和系统运行趋势</p>
+      </div>
       <h2>数据看板</h2>
       <el-radio-group v-model="periodDays" size="default" @change="loadAllData">
         <el-radio-button :value="7">近 7 天</el-radio-button>
@@ -14,8 +18,8 @@
     <el-row :gutter="16" class="stat-cards" v-loading="loading">
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
-          <div class="stat-icon" style="background: #ecf5ff">
-            <el-icon :size="28" color="#409eff"><Document /></el-icon>
+          <div class="stat-icon stat-icon-tasks">
+            <el-icon :size="28" color="#a78bfa"><Document /></el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ stats.total_tasks }}</div>
@@ -28,8 +32,8 @@
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
-          <div class="stat-icon" style="background: #f0f9eb">
-            <el-icon :size="28" color="#67c23a"><PictureFilled /></el-icon>
+          <div class="stat-icon stat-icon-images">
+            <el-icon :size="28" color="#22c55e"><PictureFilled /></el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ formatNumber(stats.total_images) }}</div>
@@ -42,8 +46,8 @@
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
-          <div class="stat-icon" style="background: #fdf6ec">
-            <el-icon :size="28" color="#e6a23c"><Aim /></el-icon>
+          <div class="stat-icon stat-icon-objects">
+            <el-icon :size="28" color="#f59e0b"><Aim /></el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ formatNumber(stats.total_objects) }}</div>
@@ -56,8 +60,8 @@
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
-          <div class="stat-icon" style="background: #fef0f0">
-            <el-icon :size="28" color="#f56c6c"><Timer /></el-icon>
+          <div class="stat-icon stat-icon-time">
+            <el-icon :size="28" color="#ef4444"><Timer /></el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ stats.avg_inference_time }}<span class="unit">ms</span></div>
@@ -71,6 +75,10 @@
     </el-row>
 
     <!-- ── 图表区域 ── -->
+    <div v-if="!hasDashboardData && !loading" class="dashboard-empty-note">
+      当前时间范围内暂无统计数据，图表会在检测任务产生后自动展示。
+    </div>
+
     <el-row :gutter="16" class="chart-row">
       <!-- 每日检测趋势（折线图） -->
       <el-col :span="16">
@@ -135,7 +143,7 @@ import {
 } from '@/api/dashboard'
 import { Aim, Document, PictureFilled, Timer } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 // ── 响应式状态 ──
 const periodDays = ref(30)
@@ -146,6 +154,15 @@ const stats = ref({
   total_objects: 0,
   avg_inference_time: 0,
   growth: {},
+})
+
+const hasDashboardData = computed(() => {
+  return Boolean(
+    stats.value.total_tasks
+    || stats.value.total_images
+    || stats.value.total_objects
+    || stats.value.avg_inference_time
+  )
 })
 
 // ── 图表 DOM 引用 ──
@@ -159,6 +176,7 @@ let trendChart = null
 let classChart = null
 let sceneChart = null
 let typeChart = null
+const CHART_THEME = 'dark'
 
 // ── 格式化函数 ──
 function formatNumber(num) {
@@ -213,7 +231,7 @@ async function loadAllData() {
 function renderTrendChart(trend = []) {
   if (!trendChartRef.value) return
   if (!trendChart) {
-    trendChart = echarts.init(trendChartRef.value)
+    trendChart = echarts.init(trendChartRef.value, CHART_THEME)
   }
 
   const dates = trend.map((d) => d.date.slice(5)) // "MM-DD"
@@ -221,6 +239,7 @@ function renderTrendChart(trend = []) {
   const objectCounts = trend.map((d) => d.object_count)
 
   trendChart.setOption({
+    backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'cross' },
@@ -290,10 +309,11 @@ function renderTrendChart(trend = []) {
 function renderClassChart(distribution = []) {
   if (!classChartRef.value) return
   if (!classChart) {
-    classChart = echarts.init(classChartRef.value)
+    classChart = echarts.init(classChartRef.value, CHART_THEME)
   }
 
   classChart.setOption({
+    backgroundColor: 'transparent',
     tooltip: {
       trigger: 'item',
       formatter: '{b}: {c} ({d}%)',
@@ -331,10 +351,11 @@ function renderClassChart(distribution = []) {
 function renderSceneChart(distribution = []) {
   if (!sceneChartRef.value) return
   if (!sceneChart) {
-    sceneChart = echarts.init(sceneChartRef.value)
+    sceneChart = echarts.init(sceneChartRef.value, CHART_THEME)
   }
 
   sceneChart.setOption({
+    backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
@@ -380,12 +401,13 @@ function renderSceneChart(distribution = []) {
 function renderTypeChart(distribution = []) {
   if (!typeChartRef.value) return
   if (!typeChart) {
-    typeChart = echarts.init(typeChartRef.value)
+    typeChart = echarts.init(typeChartRef.value, CHART_THEME)
   }
 
   const colors = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#909399']
 
   typeChart.setOption({
+    backgroundColor: 'transparent',
     tooltip: {
       trigger: 'item',
       formatter: '{b}: {c} ({d}%)',
@@ -443,17 +465,34 @@ onBeforeUnmount(() => {
 <style lang="scss" scoped>
 .dashboard-page {
   padding: 0;
+  color: $text-regular;
+  max-width: $page-max-width;
+  margin: 0 auto;
 }
 
 .page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  gap: $spacing-lg;
+  margin-bottom: $spacing-lg;
 
-  h2 {
-    margin: 0;
+  > h2 {
+    display: none;
   }
+}
+
+.page-title-copy h2 {
+  margin: 0;
+  color: $text-primary;
+  font-size: 26px;
+  font-weight: 650;
+}
+
+.page-title-copy p {
+  margin: 6px 0 0;
+  color: $text-secondary;
+  font-size: 14px;
 }
 
 /* 统计卡片 */
@@ -462,6 +501,9 @@ onBeforeUnmount(() => {
 }
 
 .stat-card {
+  border-radius: $border-radius-lg;
+  background: rgba(24, 29, 36, 0.72);
+
   :deep(.el-card__body) {
     display: flex;
     align-items: center;
@@ -471,13 +513,30 @@ onBeforeUnmount(() => {
 }
 
 .stat-icon {
-  width: 56px;
-  height: 56px;
+  width: 44px;
+  height: 44px;
   border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.stat-icon-tasks {
+  background: rgba(139, 92, 246, 0.14);
+}
+
+.stat-icon-images {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.stat-icon-objects {
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.stat-icon-time {
+  background: rgba(239, 68, 68, 0.12);
 }
 
 .stat-info {
@@ -486,22 +545,22 @@ onBeforeUnmount(() => {
 }
 
 .stat-value {
-  font-size: 28px;
+  font-size: 27px;
   font-weight: 700;
-  color: #303133;
+  color: $text-primary;
   line-height: 1.2;
 
   .unit {
     font-size: 14px;
     font-weight: 400;
-    color: #909399;
+    color: $text-secondary;
     margin-left: 2px;
   }
 }
 
 .stat-label {
   font-size: 13px;
-  color: #909399;
+  color: $text-secondary;
   margin-top: 2px;
 }
 
@@ -524,17 +583,41 @@ onBeforeUnmount(() => {
   }
 
   &.growth-flat {
-    color: #909399;
+    color: $text-placeholder;
   }
 }
 
 /* 图表区域 */
 .chart-row {
   margin-bottom: 16px;
+
+  :deep(.el-card) {
+    border-radius: $border-radius-lg;
+    background: rgba(24, 29, 36, 0.72);
+  }
+}
+
+.dashboard-empty-note {
+  margin: 0 0 $spacing-md;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: $border-radius-lg;
+  background: rgba(139, 92, 246, 0.08);
+  color: $text-secondary;
+  font-size: 13px;
 }
 
 .chart-container {
   height: 320px;
   width: 100%;
+  border-radius: $border-radius-md;
+  background: rgba(18, 22, 28, 0.36);
+}
+
+@media (max-width: 900px) {
+  .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>

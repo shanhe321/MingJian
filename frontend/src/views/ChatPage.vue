@@ -1,7 +1,15 @@
 <template>
-  <div class="chat-page" @dragover.prevent="handleDragOver" @dragleave.prevent="isDragging = false" @drop.prevent="handleDrop">
+  <div
+    class="chat-page"
+    :class="{ 'is-empty': !hasUserMessages }"
+    @dragover.prevent="handleDragOver"
+    @dragleave.prevent="isDragging = false"
+    @drop.prevent="handleDrop"
+  >
+    <ChatWelcome v-if="!hasUserMessages" @use-prompt="handleUsePrompt" />
+
     <!-- ── 消息列表区域 ── -->
-    <div class="message-list" ref="messageListRef">
+    <div v-else class="message-list" ref="messageListRef">
       <div
         v-for="(msg, index) in agentStore.messages"
         :key="msg.id ?? index"
@@ -86,42 +94,49 @@
       </div>
     </div>
 
-    <!-- ── 快捷操作栏 ── -->
-    <div class="quick-actions">
-      <el-button :disabled="agentStore.isLoading" @click="handleQuickDetect('single')">
-        📷 单图检测
-      </el-button>
-      <el-button :disabled="agentStore.isLoading" @click="handleQuickDetect('batch')">
-        📁 批量/ZIP
-      </el-button>
-      <el-button :disabled="agentStore.isLoading" @click="handleVideoDetect">
-        🎬 视频
-      </el-button>
-      <el-button disabled>📹 摄像头</el-button>
-      <div class="quick-actions-spacer"></div>
-      <el-button :disabled="agentStore.isLoading" text @click="handleNewChat">
-        <el-icon><Delete /></el-icon>
-        清空对话
-      </el-button>
-    </div>
-
     <!-- ── 输入区域 ── -->
     <div class="input-area">
       <!-- 已选文件预览 -->
-      <div v-if="selectedFile" class="selected-file-chip">
-        <span class="text-ellipsis">📎 {{ selectedFile.name }}</span>
-        <el-icon class="remove-icon" @click="selectedFile = null"><Close /></el-icon>
+      <div v-if="selectedFiles.length" class="selected-file-panel">
+        <div class="selected-file-main">
+          <img v-if="selectedPreviewUrl" :src="selectedPreviewUrl" alt="已选图片预览" />
+          <span v-else class="selected-file-icon">
+            <el-icon><component :is="currentMode.icon" /></el-icon>
+          </span>
+          <span class="selected-file-copy">
+            <strong>{{ fileSummaryTitle }}</strong>
+            <small>{{ fileSummaryMeta }}</small>
+            <small v-if="fileExtraText">{{ fileExtraText }}</small>
+          </span>
+        </div>
+        <button type="button" class="remove-file-btn" aria-label="移除已选文件" @click="clearSelectedFiles">
+          <el-icon><Close /></el-icon>
+        </button>
+      </div>
+
+      <div v-if="selectedFiles.length > 1" class="selected-file-list">
+        <span v-for="file in selectedFiles.slice(0, 3)" :key="file.name">{{ file.name }}</span>
+        <span v-if="selectedFiles.length > 3">还有 {{ selectedFiles.length - 3 }} 个</span>
       </div>
 
       <div class="input-row">
         <!-- 附件按钮 -->
-        <el-button class="attach-btn" circle :disabled="agentStore.isLoading" @click="triggerFileInput">
+        <el-button
+          class="attach-btn"
+          circle
+          :disabled="agentStore.isLoading || detectionMode === 'camera'"
+          @click="triggerFileInput"
+        >
           <el-icon><Paperclip /></el-icon>
         </el-button>
+
+        <DetectionModeSelector v-model="detectionMode" />
+
         <input
           ref="fileInputRef"
           type="file"
-          accept="image/*,.zip"
+          :accept="currentMode.accept"
+          :multiple="currentMode.multiple"
           style="display: none"
           @change="handleFileSelect"
         />
@@ -129,16 +144,38 @@
         <!-- 文本输入框 -->
         <el-input
           v-model="inputText"
-          placeholder="输入消息，或拖拽图片/ZIP 到这里...（支持“再检测一张”等上下文对话）"
+          type="textarea"
+          :autosize="{ minRows: 1, maxRows: 4 }"
+          resize="none"
+          :placeholder="currentMode.placeholder"
           :disabled="agentStore.isLoading"
-          @keyup.enter="sendMessage"
+          @keydown.enter.exact.prevent="sendMessage"
         />
 
         <!-- 发送/停止按钮 -->
-        <el-button v-if="!agentStore.isLoading" type="primary" :disabled="!canSend" @click="sendMessage">
-          发送
+        <el-button
+          v-if="!agentStore.isLoading"
+          class="send-btn"
+          type="primary"
+          circle
+          :disabled="!canSend"
+          aria-label="发送"
+          @click="sendMessage"
+        >
+          <el-icon><Position /></el-icon>
         </el-button>
-        <el-button v-else type="danger" @click="handleStop">停止</el-button>
+        <el-button v-else class="stop-btn" type="danger" @click="handleStop">停止</el-button>
+
+        <el-button
+          v-if="agentStore.messages.length"
+          class="clear-chat-btn"
+          :disabled="agentStore.isLoading"
+          text
+          aria-label="清空对话"
+          @click="handleNewChat"
+        >
+          <el-icon><Delete /></el-icon>
+        </el-button>
       </div>
     </div>
 
@@ -168,44 +205,157 @@
  */
 import { detectBatch, detectSingle, detectVideo, detectZip, getVideoStatus } from '@/api/detection'
 import { clearChatSession } from '@/api/chat'
+import ChatWelcome from '@/components/chat/ChatWelcome.vue'
+import DetectionModeSelector from '@/components/chat/DetectionModeSelector.vue'
 import DetectionResultCard from '@/components/DetectionResultCard.vue'
 import { useAgentStore } from '@/stores/agent'
 import { renderMarkdown } from '@/utils/markdown'
 import request from '@/utils/request'
 import { streamChat, TOOL_NAME_MAP } from '@/utils/stream'
 import {
+  Camera,
   Close,
   CircleCheckFilled,
   CircleClose,
   Delete,
+  FolderOpened,
   InfoFilled,
   Loading,
   Paperclip,
+  Picture,
+  Position,
   RefreshRight,
   UploadFilled,
+  VideoCamera,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 // ── Store ──
 const agentStore = useAgentStore()
+const router = useRouter()
 
 // ── 响应式状态 ──
 const inputText = ref('')
-const selectedFile = ref(null)
+const selectedFiles = ref([])
+const selectedPreviewUrl = ref('')
+const detectionMode = ref('single')
 const messageListRef = ref(null)
 const fileInputRef = ref(null)
 const isDragging = ref(false)
 let messageIdSeq = 0
 
+const detectionModes = {
+  single: {
+    label: '单图检测',
+    icon: Picture,
+    accept: 'image/*',
+    multiple: false,
+    placeholder: '描述你的检测需求，或上传一张 PCB 图片...',
+  },
+  batch: {
+    label: '批量 / ZIP',
+    icon: FolderOpened,
+    accept: 'image/*,.zip',
+    multiple: true,
+    placeholder: '上传多张图片或 ZIP 压缩包进行批量检测...',
+  },
+  video: {
+    label: '视频检测',
+    icon: VideoCamera,
+    accept: 'video/mp4,video/avi,video/quicktime,video/x-msvideo,video/x-matroska,video/x-ms-wmv,video/x-flv,.mp4,.avi,.mov,.mkv,.wmv,.flv',
+    multiple: false,
+    placeholder: '上传视频文件并分析采样帧...',
+  },
+  camera: {
+    label: '摄像头',
+    icon: Camera,
+    accept: '',
+    multiple: false,
+    placeholder: '进入实时摄像头检测工作台...',
+  },
+}
+
 // ── 计算属性 ──
+const currentMode = computed(() => detectionModes[detectionMode.value] || detectionModes.single)
+
 const canSend = computed(() => {
-  return !agentStore.isLoading && (inputText.value.trim() || selectedFile.value)
+  return !agentStore.isLoading
+    && (inputText.value.trim() || selectedFiles.value.length || detectionMode.value === 'camera')
+})
+
+const hasUserMessages = computed(() => {
+  return agentStore.messages.some((msg) => msg.role === 'user')
+})
+
+const fileSummaryTitle = computed(() => {
+  if (!selectedFiles.value.length) return ''
+  if (detectionMode.value === 'batch') {
+    const hasZip = selectedFiles.value.some((file) => file.name.toLowerCase().endsWith('.zip'))
+    return hasZip ? selectedFiles.value[0].name : `${selectedFiles.value.length} 个文件`
+  }
+  return selectedFiles.value[0].name
+})
+
+const fileSummaryMeta = computed(() => {
+  if (!selectedFiles.value.length) return ''
+  if (detectionMode.value === 'batch' && selectedFiles.value.length > 1) {
+    const totalSize = selectedFiles.value.reduce((sum, file) => sum + file.size, 0)
+    return `${selectedFiles.value.length} 个文件，${formatFileSize(totalSize)}`
+  }
+  const file = selectedFiles.value[0]
+  return `${formatFileSize(file.size)}${file.type ? ` · ${file.type}` : ''}`
+})
+
+const fileExtraText = computed(() => {
+  if (detectionMode.value !== 'batch' || selectedFiles.value.length <= 3) return ''
+  return `已选择 ${selectedFiles.value.length} 个文件`
 })
 
 /** 校验文件类型是否为图片或 ZIP */
-function isValidAttachment(file) {
-  return file.type.startsWith('image/') || file.name.toLowerCase().endsWith('.zip')
+function isValidAttachment(file, mode = detectionMode.value) {
+  const lowerName = file.name.toLowerCase()
+  if (mode === 'single') {
+    return file.type.startsWith('image/')
+  }
+  if (mode === 'batch') {
+    return file.type.startsWith('image/') || lowerName.endsWith('.zip')
+  }
+  if (mode === 'video') {
+    return ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv'].some((ext) => lowerName.endsWith(ext))
+  }
+  return false
+}
+
+function formatFileSize(size) {
+  if (!size) return '0 B'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function updateSelectedPreview() {
+  if (selectedPreviewUrl.value) {
+    URL.revokeObjectURL(selectedPreviewUrl.value)
+    selectedPreviewUrl.value = ''
+  }
+  const firstFile = selectedFiles.value[0]
+  if (firstFile && detectionMode.value === 'single' && firstFile.type.startsWith('image/')) {
+    selectedPreviewUrl.value = URL.createObjectURL(firstFile)
+  }
+}
+
+function clearSelectedFiles() {
+  selectedFiles.value = []
+  updateSelectedPreview()
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
+}
+
+function handleUsePrompt(prompt) {
+  inputText.value = prompt
 }
 
 /** 滚动到底部 */
@@ -320,9 +470,29 @@ function describeToolResult(tool, summary) {
 async function sendMessage() {
   if (!canSend.value) return
 
+  if (detectionMode.value === 'camera') {
+    router.push('/detection')
+    return
+  }
+
   const message = inputText.value.trim()
+  const filesToSend = [...selectedFiles.value]
+
+  if (filesToSend.length && (!message || detectionMode.value !== 'single')) {
+    inputText.value = ''
+    clearSelectedFiles()
+    if (detectionMode.value === 'single') {
+      await runSingleDetection(filesToSend[0])
+    } else if (detectionMode.value === 'batch') {
+      await runBatchDetection(filesToSend)
+    } else if (detectionMode.value === 'video') {
+      await runVideoDetection(filesToSend[0])
+    }
+    return
+  }
+
   // ── 关键：在清空之前保存文件引用 ──
-  const fileToSend = selectedFile.value
+  const fileToSend = filesToSend[0]
   const imagePreview = fileToSend && fileToSend.type.startsWith('image/')
     ? URL.createObjectURL(fileToSend)
     : null
@@ -337,7 +507,7 @@ async function sendMessage() {
 
   // 清空输入
   inputText.value = ''
-  selectedFile.value = null
+  clearSelectedFiles()
 
   // 添加 AI 加载占位
   const assistantMsg = pushMessage({
@@ -423,20 +593,62 @@ async function handleNewChat() {
 
 /** 触发文件选择框 */
 function triggerFileInput() {
+  if (detectionMode.value === 'camera') {
+    router.push('/detection')
+    return
+  }
   fileInputRef.value?.click()
+}
+
+function applySelectedFiles(fileList) {
+  const files = Array.from(fileList || [])
+  if (!files.length) return
+
+  const mode = detectionMode.value
+  const normalizedFiles = mode === 'batch' ? files : [files[0]]
+
+  if (mode === 'batch') {
+    const zipFiles = normalizedFiles.filter((file) => file.name.toLowerCase().endsWith('.zip'))
+    if (zipFiles.length > 1 || (zipFiles.length === 1 && normalizedFiles.length > 1)) {
+      ElMessage.warning('ZIP 检测请只选择一个压缩包，或选择多张图片')
+      return
+    }
+  }
+
+  for (const file of normalizedFiles) {
+    if (!isValidAttachment(file, mode)) {
+      ElMessage.warning(fileTypeWarning(mode))
+      return
+    }
+    if (mode === 'video' && file.size > 50 * 1024 * 1024) {
+      ElMessage.warning('视频文件不能超过 50MB')
+      return
+    }
+  }
+
+  selectedFiles.value = normalizedFiles
+  updateSelectedPreview()
+  ElMessage.info(selectionMessage(normalizedFiles, mode))
+}
+
+function fileTypeWarning(mode) {
+  if (mode === 'single') return '单图检测仅支持图片文件'
+  if (mode === 'batch') return '批量检测仅支持图片或单个 ZIP 文件'
+  if (mode === 'video') return '视频检测仅支持 mp4、avi、mov、mkv、wmv、flv'
+  return '当前模式不需要上传文件'
+}
+
+function selectionMessage(files, mode) {
+  if (mode === 'batch') {
+    const hasZip = files.some((file) => file.name.toLowerCase().endsWith('.zip'))
+    return hasZip ? `${files[0].name} 已选择` : `已选择 ${files.length} 个文件`
+  }
+  return `${files[0].name} 已选择`
 }
 
 /** 文件选择回调 */
 function handleFileSelect(event) {
-  const file = event.target.files[0]
-  if (file) {
-    if (!isValidAttachment(file)) {
-      ElMessage.warning('仅支持图片或 ZIP 文件')
-      return
-    }
-    selectedFile.value = file
-    ElMessage.info(`${file.name} 已选择`)
-  }
+  applySelectedFiles(event.target.files)
   event.target.value = ''
 }
 
@@ -450,15 +662,53 @@ function handleDragOver() {
 /** 拖拽释放文件 */
 function handleDrop(event) {
   isDragging.value = false
-  if (agentStore.isLoading) return
-  const file = event.dataTransfer?.files?.[0]
+  if (agentStore.isLoading || detectionMode.value === 'camera') return
+  const files = event.dataTransfer?.files
+  if (!files?.length) return
+  applySelectedFiles(files)
+}
+
+async function runSingleDetection(file) {
   if (!file) return
-  if (!isValidAttachment(file)) {
-    ElMessage.warning('仅支持图片或 ZIP 文件')
+  if (!isValidAttachment(file, 'single')) {
+    ElMessage.warning(fileTypeWarning('single'))
     return
   }
-  selectedFile.value = file
-  ElMessage.info(`${file.name} 已选择`)
+
+  pushMessage({
+    role: 'user',
+    content: `[快捷检测] ${file.name}`,
+    image: file.name,
+    imagePreview: URL.createObjectURL(file),
+  })
+
+  const assistantMsg = pushMessage({
+    role: 'assistant',
+    content: '正在检测中...',
+    loading: true,
+  })
+  scrollToBottom()
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const result = await detectSingle(formData)
+    if (result.error) {
+      assistantMsg.content = `检测失败：${result.error}`
+      assistantMsg.error = true
+    } else {
+      assistantMsg.content = `检测完成！发现 ${result.total_objects ?? 0} 个目标。`
+      assistantMsg.detectionResult = result
+    }
+    assistantMsg.loading = false
+  } catch (err) {
+    console.error('[单图检测异常]', err)
+    assistantMsg.content = `检测失败：${err.response?.data?.detail || err.message || '请重试'}`
+    assistantMsg.loading = false
+    assistantMsg.error = true
+  }
+  scrollToBottom()
 }
 
 /**
@@ -473,106 +723,78 @@ async function handleQuickDetect(type) {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'image/*'
-    input.onchange = async (e) => {
-      const file = e.target.files[0]
-      if (!file) return
-
-      pushMessage({
-        role: 'user',
-        content: `[快捷检测] ${file.name}`,
-        image: file.name,
-        imagePreview: URL.createObjectURL(file),
-      })
-
-      const assistantMsg = pushMessage({
-        role: 'assistant',
-        content: '正在检测中...',
-        loading: true,
-      })
-      scrollToBottom()
-
-      const formData = new FormData()
-      formData.append('file', file)
-
-      try {
-        const result = await detectSingle(formData)
-        if (result.error) {
-          assistantMsg.content = `检测失败：${result.error}`
-          assistantMsg.error = true
-        } else {
-          assistantMsg.content = `检测完成！发现 ${result.total_objects ?? 0} 个目标。`
-          assistantMsg.detectionResult = result
-        }
-        assistantMsg.loading = false
-      } catch (err) {
-        console.error('[单图检测异常]', err)
-        assistantMsg.content = `检测失败：${err.response?.data?.detail || err.message || '请重试'}`
-        assistantMsg.loading = false
-        assistantMsg.error = true
-      }
-      scrollToBottom()
-    }
+    input.onchange = async (e) => runSingleDetection(e.target.files[0])
     input.click()
   } else if (type === 'batch') {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'image/*,.zip'
     input.multiple = true
-    input.onchange = async (e) => {
-      const files = Array.from(e.target.files)
-      if (!files.length) return
-
-      const isZip = files.some((f) => f.name.toLowerCase().endsWith('.zip'))
-      const formData = new FormData()
-
-      if (isZip && files.length === 1) {
-        formData.append('file', files[0])
-        pushMessage({
-          role: 'user',
-          content: `[快捷检测] ZIP：${files[0].name}`,
-        })
-      } else {
-        files.forEach((f) => formData.append('files', f))
-        const imagePreviews = files.map((f) => URL.createObjectURL(f))
-        pushMessage({
-          role: 'user',
-          content: `[快捷检测] ${files.length} 张图片`,
-          images: imagePreviews,
-        })
-      }
-
-      const assistantMsg = pushMessage({
-        role: 'assistant',
-        content: '正在批量检测中...',
-        loading: true,
-      })
-      scrollToBottom()
-
-      try {
-        const apiCall = isZip ? detectZip(formData) : detectBatch(formData)
-        const result = await apiCall
-
-        if (result.error) {
-          assistantMsg.content = `批量检测失败：${result.error}`
-          assistantMsg.loading = false
-          assistantMsg.error = true
-          return
-        }
-
-        const totalObjects = result.total_objects ?? 0
-        assistantMsg.content = `批量检测完成！共 ${totalObjects} 个目标。`
-        assistantMsg.loading = false
-        assistantMsg.detectionResult = result
-      } catch (err) {
-        console.error('[批量检测异常]', err)
-        assistantMsg.content = `批量检测失败：${err.response?.data?.detail || err.message || '请重试'}`
-        assistantMsg.loading = false
-        assistantMsg.error = true
-      }
-      scrollToBottom()
-    }
+    input.onchange = async (e) => runBatchDetection(Array.from(e.target.files))
     input.click()
   }
+}
+
+async function runBatchDetection(files) {
+  if (!files?.length) return
+
+  const isZip = files.some((f) => f.name.toLowerCase().endsWith('.zip'))
+  if (isZip && files.length !== 1) {
+    ElMessage.warning('ZIP 检测请只选择一个压缩包，或选择多张图片')
+    return
+  }
+  if (files.some((file) => !isValidAttachment(file, 'batch'))) {
+    ElMessage.warning(fileTypeWarning('batch'))
+    return
+  }
+
+  const formData = new FormData()
+
+  if (isZip) {
+    formData.append('file', files[0])
+    pushMessage({
+      role: 'user',
+      content: `[快捷检测] ZIP：${files[0].name}`,
+    })
+  } else {
+    files.forEach((f) => formData.append('files', f))
+    const imagePreviews = files.map((f) => URL.createObjectURL(f))
+    pushMessage({
+      role: 'user',
+      content: `[快捷检测] ${files.length} 张图片`,
+      images: imagePreviews,
+    })
+  }
+
+  const assistantMsg = pushMessage({
+    role: 'assistant',
+    content: '正在批量检测中...',
+    loading: true,
+  })
+  scrollToBottom()
+
+  try {
+    const apiCall = isZip ? detectZip(formData) : detectBatch(formData)
+    const result = await apiCall
+
+    if (result.error) {
+      assistantMsg.content = `批量检测失败：${result.error}`
+      assistantMsg.loading = false
+      assistantMsg.error = true
+      return
+    }
+
+    const totalObjects = result.total_objects ?? 0
+    assistantMsg.content = `批量检测完成！共 ${totalObjects} 个目标。`
+    assistantMsg.loading = false
+    assistantMsg.detectionResult = result
+  } catch (err) {
+    console.error('[批量检测异常]', err)
+    assistantMsg.content = `批量检测失败：${err.response?.data?.detail || err.message || '请重试'}`
+    assistantMsg.loading = false
+    assistantMsg.error = true
+  }
+  scrollToBottom()
 }
 
 /**
@@ -586,55 +808,60 @@ async function handleQuickDetect(type) {
 async function handleVideoDetect() {
   const input = document.createElement('input')
   input.type = 'file'
-  input.accept = 'video/mp4,video/avi,video/quicktime,video/x-msvideo'
-  input.onchange = async (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    // 校验文件大小（50MB）
-    const maxSize = 50 * 1024 * 1024
-    if (file.size > maxSize) {
-      ElMessage.warning('视频文件不能超过 50MB')
-      return
-    }
-
-    // 创建视频的 Blob URL 用于预览
-    const videoUrl = URL.createObjectURL(file)
-
-    pushMessage({
-      role: 'user',
-      content: `[视频检测] ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)}MB)`,
-      videoUrl,
-    })
-
-    const assistantMsg = pushMessage({
-      role: 'assistant',
-      content: '正在上传视频...',
-      loading: true,
-    })
-    scrollToBottom()
-
-    // 上传视频
-    const formData = new FormData()
-    formData.append('file', file)
-
-    try {
-      const uploadResult = await detectVideo(formData)
-      const taskId = uploadResult.task_id
-
-      assistantMsg.content = '视频已上传，正在处理中...'
-
-      // 开始轮询进度
-      await pollVideoProgress(taskId, assistantMsg)
-    } catch (err) {
-      console.error('[视频检测失败]', err)
-      assistantMsg.content = `视频检测失败：${err.response?.data?.detail || err.message || '请重试'}`
-      assistantMsg.loading = false
-      assistantMsg.error = true
-    }
-    scrollToBottom()
-  }
+  input.accept = detectionModes.video.accept
+  input.onchange = async (e) => runVideoDetection(e.target.files[0])
   input.click()
+}
+
+async function runVideoDetection(file) {
+  if (!file) return
+  if (!isValidAttachment(file, 'video')) {
+    ElMessage.warning(fileTypeWarning('video'))
+    return
+  }
+
+  // 校验文件大小（50MB）
+  const maxSize = 50 * 1024 * 1024
+  if (file.size > maxSize) {
+    ElMessage.warning('视频文件不能超过 50MB')
+    return
+  }
+
+  // 创建视频的 Blob URL 用于预览
+  const videoUrl = URL.createObjectURL(file)
+
+  pushMessage({
+    role: 'user',
+    content: `[视频检测] ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)}MB)`,
+    videoUrl,
+  })
+
+  const assistantMsg = pushMessage({
+    role: 'assistant',
+    content: '正在上传视频...',
+    loading: true,
+  })
+  scrollToBottom()
+
+  // 上传视频
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const uploadResult = await detectVideo(formData)
+    const taskId = uploadResult.task_id
+
+    assistantMsg.content = '视频已上传，正在处理中...'
+
+    // 开始轮询进度
+    await pollVideoProgress(taskId, assistantMsg)
+  } catch (err) {
+    console.error('[视频检测失败]', err)
+    assistantMsg.content = `视频检测失败：${err.response?.data?.detail || err.message || '请重试'}`
+    assistantMsg.loading = false
+    assistantMsg.error = true
+  }
+  scrollToBottom()
 }
 
 /**
@@ -684,15 +911,8 @@ async function pollVideoProgress(taskId, assistantMsg, intervalMs = 1500, maxAtt
   scrollToBottom()
 }
 
-onMounted(() => {
-  // 页面加载时显示欢迎消息
-  if (agentStore.messages.length === 0) {
-    pushMessage({
-      role: 'assistant',
-      content:
-        '你好！我是 PCB 缺陷检测智能助手。\n\n你可以：\n- 上传一张 PCB 图片，让我帮你检测缺陷\n- 使用下方的快捷按钮直接触发检测\n- 用自然语言描述你的需求（例如“今天检测了多少次？”“什么是 IoU？”）\n\n试试发一张图片给我吧！',
-    })
-  }
+onBeforeUnmount(() => {
+  clearSelectedFiles()
 })
 </script>
 
@@ -702,17 +922,24 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #fff;
-  border-radius: $border-radius-md;
-  box-shadow: $shadow-sm;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  background: transparent;
   overflow: hidden;
+}
+
+.chat-page.is-empty {
+  justify-content: flex-end;
 }
 
 /* ── 消息列表 ── */
 .message-list {
   flex: 1;
+  width: min(980px, 100%);
+  margin: 0 auto;
   overflow-y: auto;
-  padding: $spacing-lg;
+  padding: $spacing-lg $spacing-md $spacing-xl;
 }
 
 .message-item {
@@ -729,26 +956,29 @@ onMounted(() => {
 }
 
 .message-bubble {
-  max-width: 70%;
-  padding: $spacing-sm $spacing-md;
-  border-radius: $border-radius-lg;
+  max-width: min(760px, 78%);
+  padding: 10px 14px;
+  border-radius: 14px;
   line-height: 1.6;
   word-break: break-word;
 }
 
 .user-bubble {
-  background: $primary-color;
-  color: white;
-  border-bottom-right-radius: $border-radius-sm;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.9), rgba(79, 70, 229, 0.86));
+  color: #f8fafc;
+  border: 1px solid rgba(167, 139, 250, 0.18);
+  border-bottom-right-radius: 6px;
 }
 
 .assistant-bubble {
-  background: $bg-color;
-  border: 1px solid #e4e7ed;
-  border-bottom-left-radius: $border-radius-sm;
+  background: rgba(23, 28, 35, 0.52);
+  border: 1px solid transparent;
+  color: $text-regular;
+  border-bottom-left-radius: 6px;
 
   &.is-error {
-    border-color: $danger-color;
+    border-color: rgba(239, 68, 68, 0.36);
+    background: rgba(127, 29, 29, 0.28);
   }
 }
 
@@ -773,11 +1003,11 @@ onMounted(() => {
   }
   :deep(th),
   :deep(td) {
-    border: 1px solid #e4e7ed;
+    border: 1px solid $border-color;
     padding: $spacing-xs $spacing-sm;
   }
   :deep(code) {
-    background: rgba(0, 0, 0, 0.06);
+    background: rgba(255, 255, 255, 0.06);
     padding: 2px 4px;
     border-radius: 3px;
   }
@@ -826,9 +1056,9 @@ onMounted(() => {
 .tool-calls {
   margin-top: $spacing-sm;
   padding: $spacing-xs $spacing-sm;
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(255, 255, 255, 0.04);
   border-radius: $border-radius-sm;
-  border: 1px solid #e4e7ed;
+  border: 1px solid $border-color;
 }
 
 .tool-call-item {
@@ -899,62 +1129,198 @@ onMounted(() => {
   margin-top: $spacing-sm;
 }
 
-/* ── 快捷操作栏 ── */
-.quick-actions {
-  display: flex;
-  align-items: center;
-  gap: $spacing-sm;
-  padding: $spacing-sm $spacing-lg;
-  border-top: 1px solid #ebeef5;
-  background: #fff;
-}
-
-.quick-actions-spacer {
-  flex: 1;
-}
-
 /* ── 输入区域 ── */
 .input-area {
-  padding: $spacing-md $spacing-lg;
-  border-top: 1px solid #ebeef5;
-  background: #fff;
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+  padding: $spacing-sm $spacing-md $spacing-md;
+  background: transparent;
 }
 
 .input-row {
   display: flex;
   align-items: center;
   gap: $spacing-sm;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 22px;
+  background: rgba(28, 34, 43, 0.86);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
 
-  .el-input {
+  &:focus-within {
+    border-color: $border-color-strong;
+    background: rgba(31, 38, 48, 0.94);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.11);
+  }
+
+  .el-textarea {
     flex: 1;
+  }
+
+  :deep(.el-textarea__inner) {
+    background: transparent;
+    box-shadow: none;
+    border: 0;
+    min-height: 34px !important;
+    padding: 7px $spacing-sm;
+    color: $text-primary;
+    line-height: 1.5;
+    scrollbar-width: thin;
+
+    &::placeholder {
+      color: $text-placeholder;
+    }
+  }
+
+  :deep(.el-button) {
+    flex-shrink: 0;
   }
 }
 
 .attach-btn {
   flex-shrink: 0;
+  border-color: transparent;
+  background: transparent;
+  color: $text-secondary;
+
+  &:hover,
+  &:focus {
+    background: rgba(139, 92, 246, 0.12);
+    color: $primary-color-light;
+  }
+}
+
+.send-btn {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, $primary-color-light, $primary-color);
+  border-color: transparent;
+
+  &.is-disabled {
+    background: rgba(148, 163, 184, 0.18);
+    border-color: transparent;
+  }
+}
+
+.stop-btn {
+  height: 34px;
+  border-radius: 999px;
+}
+
+.clear-chat-btn {
+  color: $text-secondary;
+
+  &:hover,
+  &:focus {
+    color: $danger-color;
+    background: rgba(239, 68, 68, 0.1);
+  }
 }
 
 /* ── 已选文件预览 ── */
-.selected-file-chip {
-  display: inline-flex;
+.selected-file-panel {
+  display: flex;
   align-items: center;
-  gap: $spacing-xs;
-  max-width: 260px;
-  margin-bottom: $spacing-sm;
-  padding: 4px 10px;
-  background: $bg-color;
-  border: 1px solid #e4e7ed;
-  border-radius: $border-radius-sm;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  margin: 0 0 $spacing-sm;
+  padding: $spacing-sm;
+  background: rgba(28, 34, 43, 0.7);
+  border: 1px solid $border-color;
+  border-radius: 14px;
   font-size: 13px;
   color: $text-regular;
+}
 
-  .remove-icon {
-    cursor: pointer;
+.selected-file-main {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: $spacing-sm;
+
+  img {
+    width: 42px;
+    height: 42px;
+    object-fit: cover;
+    border-radius: 10px;
+  }
+}
+
+.selected-file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: rgba(139, 92, 246, 0.12);
+  color: $primary-color-light;
+  flex-shrink: 0;
+}
+
+.selected-file-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+
+  strong,
+  small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: $text-primary;
+    font-weight: 600;
+  }
+
+  small {
     color: $text-secondary;
+  }
+}
 
-    &:hover {
-      color: $danger-color;
-    }
+.remove-file-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: $text-secondary;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: rgba(239, 68, 68, 0.1);
+    color: $danger-color;
+    outline: none;
+  }
+}
+
+.selected-file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -2px 0 $spacing-sm;
+
+  span {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    color: $text-secondary;
+    font-size: 12px;
+    padding: 3px 9px;
   }
 }
 
@@ -965,14 +1331,14 @@ onMounted(() => {
   img {
     max-width: 200px;
     border-radius: $border-radius-sm;
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(148, 163, 184, 0.22);
   }
 
   video {
     max-width: 240px;
     max-height: 180px;
     border-radius: $border-radius-sm;
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(148, 163, 184, 0.22);
   }
 }
 
@@ -988,7 +1354,7 @@ onMounted(() => {
     height: 80px;
     object-fit: cover;
     border-radius: $border-radius-sm;
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(148, 163, 184, 0.22);
   }
 }
 
@@ -999,7 +1365,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(64, 158, 255, 0.08);
+  background: rgba(139, 92, 246, 0.1);
   border: 2px dashed $primary-color;
   pointer-events: none;
   z-index: 10;
@@ -1035,6 +1401,21 @@ onMounted(() => {
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 768px) {
+  .message-bubble {
+    max-width: 88%;
+  }
+
+  .input-row {
+    flex-wrap: wrap;
+  }
+
+  .input-row :deep(.el-textarea) {
+    flex-basis: 100%;
+    order: 3;
   }
 }
 </style>

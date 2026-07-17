@@ -3,28 +3,35 @@
 // ═══════════════════════════════════════════════════════
 
 // ── 主题色 ──────────────────────────────────────────
-$primary-color: #409eff;
-$success-color: #67c23a;
-$warning-color: #e6a23c;
-$danger-color: #f56c6c;
-$info-color: #909399;
+$primary-color: #8b5cf6;
+$primary-color-light: #a78bfa;
+$primary-color-dark: #6d28d9;
+$success-color: #22c55e;
+$warning-color: #f59e0b;
+$danger-color: #ef4444;
+$info-color: #94a3b8;
 
 // ── 背景色 ──────────────────────────────────────────
-$bg-color: #f5f7fa;
-$bg-color-dark: #1d1e1f;
-$sidebar-bg: #304156;
-$sidebar-text: #bfcbd9;
-$sidebar-active-text: #409eff;
+$bg-color: #13171d;
+$bg-color-dark: #101318;
+$surface-color: #181d24;
+$surface-color-soft: #1e242d;
+$surface-color-elevated: #262d37;
+$border-color: rgba(148, 163, 184, 0.16);
+$border-color-strong: rgba(167, 139, 250, 0.34);
+$sidebar-bg: #0c0f14;
+$sidebar-text: #9ca3af;
+$sidebar-active-text: #f4f0ff;
 
 // ── 文字色 ──────────────────────────────────────────
-$text-primary: #303133;
-$text-regular: #606266;
-$text-secondary: #909399;
-$text-placeholder: #c0c4cc;
+$text-primary: #eef1f6;
+$text-regular: #d7dce5;
+$text-secondary: #aeb5c0;
+$text-placeholder: #737c89;
 
 // ── 布局尺寸 ────────────────────────────────────────
 $header-height: 56px;
-$sidebar-width: 210px;
+$sidebar-width: 64px;
 $sidebar-collapsed-width: 64px;
 
 // ── 间距 ────────────────────────────────────────────
@@ -34,12 +41,19 @@ $spacing-md: 16px;
 $spacing-lg: 24px;
 $spacing-xl: 32px;
 
+// 鈹€鈹€ 浜у搧绾у竷灞€ Token 鈹€鈹€
+$page-max-width: 1280px;
+$page-padding-x: 24px;
+$control-height: 38px;
+$table-row-height: 46px;
+$motion-fast: 0.18s;
+
 // ── 圆角 ────────────────────────────────────────────
 $border-radius-sm: 4px;
 $border-radius-md: 8px;
 $border-radius-lg: 12px;
 
 // ── 阴影 ────────────────────────────────────────────
-$shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
-$shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
-$shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+$shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
+$shadow-md: 0 8px 24px rgba(0, 0, 0, 0.28);
+$shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.34);

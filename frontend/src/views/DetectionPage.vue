@@ -46,6 +46,88 @@
 
       <!-- 右侧：检测结果 -->
       <div class="result-panel">
+        <section class="control-panel" aria-label="实时检测控制">
+          <div class="panel-section status-section">
+            <div class="section-title">检测状态</div>
+            <div
+              class="status-inline"
+              :class="{
+                'is-running': isRunning,
+                'is-connecting': isConnecting,
+                'is-error': connectionError,
+              }"
+            >
+              <span class="status-dot"></span>
+              <span>{{ statusText }}</span>
+            </div>
+            <p v-if="connectionError" class="status-error">{{ connectionError }}</p>
+          </div>
+
+          <div class="panel-section camera-control-section">
+            <div class="section-title">摄像头控制</div>
+            <button
+              v-if="!isRunning"
+              type="button"
+              class="camera-action-btn"
+              :class="{ 'is-loading': isConnecting }"
+              :disabled="isConnecting"
+              @click="startCamera"
+            >
+              <span class="action-dot"></span>
+              {{ isConnecting ? '正在连接摄像头' : '开启摄像头' }}
+            </button>
+            <button
+              v-else
+              type="button"
+              class="camera-action-btn is-stop"
+              @click="stopCamera"
+            >
+              <span class="action-dot"></span>
+              停止摄像头
+            </button>
+          </div>
+
+          <div class="panel-section inference-section">
+            <div class="section-title">推理配置</div>
+            <label class="field-label" for="detect-mode-select">推理设备</label>
+            <el-select
+              id="detect-mode-select"
+              v-model="detectMode"
+              class="device-select"
+              :disabled="isRunning"
+              popper-class="rsod-dark-popper device-select-popper"
+            >
+              <el-option value="cpu" label="CPU 节能">
+                <div class="device-option">
+                  <strong>CPU 节能</strong>
+                  <small>适合本机开发，帧率较低</small>
+                </div>
+              </el-option>
+              <el-option value="gpu" label="GPU 加速">
+                <div class="device-option">
+                  <strong>GPU 加速</strong>
+                  <small>适合支持 CUDA 的环境</small>
+                </div>
+              </el-option>
+            </el-select>
+
+            <div class="confidence-head">
+              <span class="field-label">置信度</span>
+              <span class="confidence-value">{{ confThreshold.toFixed(2) }}</span>
+            </div>
+            <el-slider
+              v-model="confThreshold"
+              class="confidence-slider"
+              :min="0.1"
+              :max="0.9"
+              :step="0.05"
+              :disabled="isRunning"
+              :show-tooltip="true"
+              :format-tooltip="formatConfidenceTooltip"
+            />
+          </div>
+        </section>
+
         <el-card class="stats-card" shadow="never">
           <template #header>
             <span>实时检测统计</span>
@@ -193,6 +275,7 @@ const canvasRef = ref(null)
 // 摄像头状态
 const isRunning = ref(false)
 const isConnecting = ref(false)
+const connectionError = ref('')
 
 // 检测配置
 const detectMode = ref('cpu')
@@ -215,6 +298,7 @@ let mediaStream = null
 
 // ── 计算属性 ──
 const statusText = computed(() => {
+  if (connectionError.value) return '发生错误'
   if (isConnecting.value) return '连接中...'
   if (isRunning.value) return '运行中'
   return '未启动'
@@ -234,9 +318,14 @@ const classDistribution = computed(() => {
   return dist
 })
 
+function formatConfidenceTooltip(value) {
+  return value.toFixed(2)
+}
+
 /** 开启摄像头 */
 async function startCamera() {
   try {
+    connectionError.value = ''
     isConnecting.value = true
 
     // 1. 获取摄像头权限
@@ -264,6 +353,7 @@ async function startCamera() {
     isRunning.value = true
     ElMessage.success('摄像头已开启')
   } catch (err) {
+    connectionError.value = err.message || '摄像头开启失败'
     console.error('[摄像头开启失败]', err)
     ElMessage.error(`摄像头开启失败: ${err.message}`)
     isConnecting.value = false
@@ -295,11 +385,13 @@ function handleDetectionResult(data) {
 /** 处理配置成功 */
 function handleConfigOk() {
   isConnecting.value = false
+  connectionError.value = ''
   requestAnimationFrame(sendSingleFrame)
 }
 
 /** 处理错误 */
 function handleWsError(message) {
+  connectionError.value = message || '检测连接异常'
   ElMessage.error(message)
   isConnecting.value = false
 }
@@ -366,6 +458,7 @@ function stopCamera() {
   // 重置状态
   isRunning.value = false
   isConnecting.value = false
+  connectionError.value = ''
   currentFps.value = 0
   inferenceTime.value = 0
   objectCount.value = 0
@@ -390,43 +483,61 @@ onBeforeUnmount(() => {
 .detection-page {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  padding: 20px;
-  background: #f5f5f5;
+  min-height: calc(100vh - #{$header-height} - 48px);
+  color: $text-regular;
+  background: transparent;
 }
 
 .page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  width: min(1440px, 100%);
+  margin: 0 auto $spacing-lg;
 
   h2 {
     margin: 0;
+    color: $text-primary;
+    font-size: 24px;
+    font-weight: 650;
+    line-height: 1.25;
+  }
+
+  :deep(.el-tag) {
+    display: none;
   }
 }
 
 .main-content {
-  display: flex;
-  gap: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: $spacing-lg;
   flex: 1;
-  overflow: hidden;
+  width: min(1440px, 100%);
+  margin: 0 auto;
+  min-height: 0;
+  align-items: stretch;
 }
 
 /* 左侧预览区 */
 .preview-panel {
-  flex: 3;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: $spacing-md;
+  min-width: 0;
 }
 
 .video-wrapper {
   position: relative;
-  background: #000;
-  border-radius: 8px;
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: $border-radius-lg;
+  background:
+    radial-gradient(circle at 50% 24%, rgba(139, 92, 246, 0.14), transparent 28rem),
+    linear-gradient(145deg, #090d13 0%, #111720 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
   overflow: hidden;
-  min-height: 400px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -434,57 +545,312 @@ onBeforeUnmount(() => {
 
 .preview-canvas {
   width: 100%;
+  max-height: 100%;
   height: auto;
   display: block;
+  object-fit: contain;
 }
 
 .placeholder {
   position: absolute;
   inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #999;
-  font-size: 16px;
+  gap: $spacing-sm;
+  color: $text-secondary;
+  text-align: center;
+  pointer-events: none;
+
+  &::before {
+    content: "";
+    width: 54px;
+    height: 54px;
+    border: 1px solid rgba(167, 139, 250, 0.28);
+    border-radius: 18px;
+    background: rgba(139, 92, 246, 0.12);
+    box-shadow: 0 0 34px rgba(139, 92, 246, 0.12);
+  }
+
+  p {
+    margin: 0;
+    font-size: 0;
+    color: $text-regular;
+
+    &::before {
+      content: "摄像头尚未启动";
+      display: block;
+      color: $text-primary;
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 1.6;
+    }
+
+    &::after {
+      content: "在右侧控制面板中开启摄像头";
+      display: block;
+      color: $text-secondary;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+  }
 }
 
 .video-stats {
-  display: flex;
-  gap: 8px;
+  display: none;
 }
 
 /* 右侧结果区 */
 .result-panel {
-  flex: 2;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  overflow-y: auto;
+  gap: $spacing-sm;
+  min-width: 0;
+  max-height: calc(100vh - #{$header-height} - 96px);
+  overflow: hidden;
+}
+
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: $spacing-md;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: $border-radius-lg;
+  background: rgba(23, 28, 35, 0.78);
+}
+
+.panel-section {
+  padding-bottom: $spacing-sm;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+
+  &:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+}
+
+.section-title {
+  margin-bottom: $spacing-sm;
+  color: $text-primary;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.status-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: $text-secondary;
+  font-size: 13px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: $text-placeholder;
+  box-shadow: 0 0 0 4px rgba(107, 114, 128, 0.12);
+}
+
+.status-inline.is-connecting .status-dot {
+  background: $primary-color-light;
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.16);
+  animation: status-pulse 1.25s ease-in-out infinite;
+}
+
+.status-inline.is-running .status-dot {
+  background: $success-color;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+}
+
+.status-inline.is-error .status-dot {
+  background: $danger-color;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.14);
+}
+
+.status-error {
+  margin: $spacing-xs 0 0;
+  color: #fca5a5;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.camera-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: $border-radius-md;
+  background: rgba(28, 34, 43, 0.72);
+  color: $text-primary;
+  cursor: pointer;
+  font-weight: 600;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
+
+  &:hover,
+  &:focus-visible {
+    border-color: $border-color-strong;
+    background: rgba(35, 42, 53, 0.92);
+    outline: none;
+
+    .action-dot {
+      background: $primary-color-light;
+    }
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.72;
+  }
+
+  &.is-stop {
+    border-color: rgba(239, 68, 68, 0.24);
+    background: rgba(239, 68, 68, 0.1);
+    color: #fecaca;
+
+    .action-dot {
+      background: $danger-color;
+    }
+
+    &:hover,
+    &:focus-visible {
+      border-color: rgba(248, 113, 113, 0.42);
+      background: rgba(239, 68, 68, 0.14);
+    }
+  }
+}
+
+.action-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: $text-secondary;
+}
+
+.field-label {
+  display: inline-flex;
+  margin-bottom: 6px;
+  color: $text-secondary;
+  font-size: 12px;
+}
+
+.device-select {
+  width: 100%;
+  margin-bottom: $spacing-sm;
+}
+
+.device-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  strong {
+    color: $text-primary;
+    font-size: 13px;
+  }
+
+  small {
+    color: $text-secondary;
+    font-size: 12px;
+  }
+}
+
+.confidence-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: $spacing-xs;
+}
+
+.confidence-value {
+  color: $primary-color-light;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.confidence-slider {
+  margin: 0 4px;
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.35);
+    opacity: 0.7;
+  }
+}
+
+.stats-card,
+.detections-card,
+.distribution-card {
+  --el-card-bg-color: rgba(23, 28, 35, 0.82);
+  border-color: rgba(148, 163, 184, 0.12);
+  border-radius: $border-radius-lg;
+  box-shadow: none;
+  backdrop-filter: blur(10px);
+
+  :deep(.el-card__header) {
+    padding: 12px 14px;
+    color: $text-primary;
+    font-size: 14px;
+    font-weight: 600;
+    border-bottom-color: rgba(148, 163, 184, 0.1);
+  }
+
+  :deep(.el-card__body) {
+    padding: 14px;
+  }
+}
+
+.detections-card {
+  flex: 1;
+  min-height: 0;
+
+  :deep(.el-card__body) {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
 }
 
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: $spacing-sm;
 }
 
 .stat-item {
-  text-align: center;
-  padding: 12px;
-  background: #f9f9f9;
-  border-radius: 8px;
+  min-height: 66px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: $border-radius-md;
+  background: rgba(28, 34, 43, 0.72);
 }
 
 .stat-value {
-  font-size: 24px;
+  color: $primary-color-light;
+  font-size: 23px;
   font-weight: 700;
-  color: #409eff;
+  line-height: 1.1;
 }
 
 .stat-label {
   font-size: 12px;
-  color: #999;
-  margin-top: 4px;
+  color: $text-secondary;
+  margin-top: 5px;
 }
 
 .card-header {
@@ -495,21 +861,24 @@ onBeforeUnmount(() => {
 
 .empty-state {
   text-align: center;
-  color: #999;
-  padding: 20px;
+  color: $text-secondary;
+  padding: 28px $spacing-md;
 }
 
 .detection-list {
-  max-height: 300px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
 }
 
 .detection-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #f0f0f0;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
 
   &:last-child {
     border-bottom: none;
@@ -525,46 +894,120 @@ onBeforeUnmount(() => {
 .det-class {
   font-weight: 600;
   min-width: 80px;
+  color: $text-primary;
 }
 
 .det-bbox {
   font-size: 12px;
-  color: #999;
+  color: $text-placeholder;
   font-family: monospace;
+  line-height: 1.7;
+  text-align: right;
 }
 
 .distribution-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: $spacing-sm;
 }
 
 .distribution-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  background: #f5f5f5;
-  border-radius: 4px;
+  gap: $spacing-sm;
+  padding: 6px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 999px;
+  background: rgba(28, 34, 43, 0.7);
 }
 
 .class-name {
   font-weight: 500;
+  color: $text-regular;
 }
 
 /* 控制栏 */
 .control-bar {
-  display: flex;
+  display: none;
   align-items: center;
-  gap: 16px;
-  padding: 16px 0;
-  border-top: 1px solid #e0e0e0;
-  margin-top: 16px;
+  flex-wrap: wrap;
+  gap: $spacing-md;
+  padding: $spacing-md;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: $border-radius-lg;
+  background: rgba(23, 28, 35, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.control-bar :deep(.el-divider--vertical) {
+  border-left-color: rgba(148, 163, 184, 0.16);
+}
+
+.control-bar :deep(.el-radio-button__inner) {
+  background: rgba(28, 34, 43, 0.72);
+  border-color: rgba(148, 163, 184, 0.16);
+  color: $text-secondary;
+}
+
+.control-bar :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  background: rgba(139, 92, 246, 0.22);
+  border-color: rgba(167, 139, 250, 0.36);
+  color: $text-primary;
+  box-shadow: -1px 0 0 0 rgba(167, 139, 250, 0.36);
+}
+
+.control-bar :deep(.el-slider) {
+  --el-slider-main-bg-color: #{$primary-color};
+  --el-slider-runway-bg-color: rgba(148, 163, 184, 0.18);
+}
+
+.control-bar :deep(.el-slider__input) {
+  width: 92px;
 }
 
 .control-label {
   font-size: 14px;
-  color: #666;
+  color: $text-secondary;
   white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+  .main-content {
+    grid-template-columns: 1fr;
+  }
+
+  .result-panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .distribution-card {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: $spacing-sm;
+  }
+
+  .video-wrapper {
+    min-height: 300px;
+  }
+
+  .result-panel {
+    display: flex;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .control-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 </style>
