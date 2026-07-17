@@ -5,7 +5,7 @@
 @use './reset.scss';
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   --rsod-bg: #{$bg-color};
   --rsod-bg-deep: #{$bg-color-dark};
   --rsod-surface: #{$surface-color};
@@ -25,9 +25,9 @@
   --el-color-primary: #{$primary-color};
   --el-color-primary-light-3: #{$primary-color-light};
   --el-color-primary-light-5: #{$primary-color};
-  --el-color-primary-light-7: rgba(139, 92, 246, 0.26);
-  --el-color-primary-light-8: rgba(139, 92, 246, 0.18);
-  --el-color-primary-light-9: rgba(139, 92, 246, 0.12);
+  --el-color-primary-light-7: rgba(91, 124, 250, 0.22);
+  --el-color-primary-light-8: rgba(91, 124, 250, 0.14);
+  --el-color-primary-light-9: rgba(91, 124, 250, 0.08);
   --el-color-primary-dark-2: #{$primary-color-dark};
   --el-bg-color: #{$surface-color};
   --el-bg-color-page: #{$bg-color};
@@ -39,24 +39,27 @@
   --el-fill-color-blank: #{$surface-color};
   --el-border-color: #{$border-color};
   --el-border-color-light: #{$border-color};
-  --el-border-color-lighter: rgba(148, 163, 184, 0.12);
-  --el-border-color-extra-light: rgba(148, 163, 184, 0.08);
+  --el-border-color-lighter: #edf2f7;
+  --el-border-color-extra-light: #f1f5f9;
   --el-border-radius-base: #{$border-radius-md};
   --el-border-radius-small: #{$border-radius-sm};
   --el-text-color-primary: #{$text-primary};
   --el-text-color-regular: #{$text-regular};
   --el-text-color-secondary: #{$text-secondary};
   --el-text-color-placeholder: #{$text-placeholder};
-  --el-disabled-bg-color: rgba(148, 163, 184, 0.08);
-  --el-disabled-text-color: rgba(156, 163, 175, 0.58);
-  --el-mask-color: rgba(0, 0, 0, 0.64);
+  --el-disabled-bg-color: #eef2f7;
+  --el-disabled-text-color: #98a2b3;
+  --el-mask-color: rgba(15, 23, 42, 0.42);
   --el-box-shadow-light: #{$shadow-sm};
   --el-box-shadow: #{$shadow-md};
 }
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(139, 92, 246, 0.12), transparent 34rem),
+    radial-gradient(circle at 70% 15%, rgba(91, 124, 250, 0.14), transparent 28rem),
+    radial-gradient(circle at 28% 18%, rgba(139, 92, 246, 0.1), transparent 24rem),
+    radial-gradient(circle at 50% 0%, rgba(72, 184, 247, 0.08), transparent 18rem),
+    linear-gradient(180deg, #f8fbff 0%, #f5f7fc 100%),
     var(--rsod-bg-deep);
 }
 
@@ -68,7 +71,9 @@ body {
 
 // ── 卡片容器 ────────────────────────────────────────
 .card-container {
-  background: $surface-color;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.88)),
+    $surface-color;
   border: 1px solid $border-color;
   border-radius: $border-radius-md;
   box-shadow: $shadow-sm;
@@ -116,6 +121,10 @@ body {
   --el-card-bg-color: var(--rsod-surface);
   border-color: var(--rsod-border);
   color: var(--rsod-text-regular);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.92));
+  box-shadow: 0 14px 34px rgba(40, 58, 96, 0.07);
+  backdrop-filter: blur(12px);
 }
 
 .el-card__header {
@@ -123,12 +132,20 @@ body {
 }
 
 .el-button:not(.el-button--primary):not(.el-button--success):not(.el-button--warning):not(.el-button--danger) {
-  --el-button-bg-color: var(--rsod-surface-soft);
+  --el-button-bg-color: rgba(255, 255, 255, 0.78);
   --el-button-border-color: var(--rsod-border);
   --el-button-text-color: var(--rsod-text-regular);
-  --el-button-hover-bg-color: var(--rsod-surface-elevated);
+  --el-button-hover-bg-color: #fff;
   --el-button-hover-border-color: var(--rsod-border-strong);
   --el-button-hover-text-color: var(--rsod-text-primary);
+}
+
+.el-button--primary {
+  --el-button-bg-color: #{$primary-color};
+  --el-button-border-color: #{$primary-color};
+  --el-button-hover-bg-color: #{$primary-color-dark};
+  --el-button-hover-border-color: #{$primary-color-dark};
+  box-shadow: 0 10px 24px rgba(91, 124, 250, 0.18);
 }
 
 .el-input,
@@ -146,25 +163,27 @@ body {
 .el-input__wrapper,
 .el-textarea__inner,
 .el-select__wrapper {
-  background-color: var(--rsod-surface-soft);
+  background-color: rgba(255, 255, 255, 0.82);
   box-shadow: 0 0 0 1px var(--rsod-border) inset;
 }
 
 .el-input__wrapper.is-focus,
 .el-select__wrapper.is-focused,
 .el-textarea__inner:focus {
-  box-shadow: 0 0 0 1px var(--rsod-border-strong) inset;
+  box-shadow:
+    0 0 0 1px var(--rsod-border-strong) inset,
+    0 0 0 4px rgba(91, 124, 250, 0.08);
 }
 
 .el-input.is-disabled .el-input__wrapper,
 .el-select .el-select__wrapper.is-disabled {
-  background: rgba(148, 163, 184, 0.08);
-  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.1) inset;
+  background: #eef2f7;
+  box-shadow: 0 0 0 1px #dbe4ef inset;
 }
 
 .el-input.is-disabled .el-input__inner,
 .el-select .el-select__wrapper.is-disabled .el-select__selected-item {
-  color: rgba(174, 181, 192, 0.62);
+  color: #98a2b3;
 }
 
 .el-table {
@@ -174,8 +193,8 @@ body {
   --el-table-header-text-color: var(--rsod-text-secondary);
   --el-table-text-color: var(--rsod-text-regular);
   --el-table-border-color: var(--rsod-border);
-  --el-table-row-hover-bg-color: rgba(139, 92, 246, 0.08);
-  --el-table-current-row-bg-color: rgba(139, 92, 246, 0.1);
+  --el-table-row-hover-bg-color: rgba(91, 124, 250, 0.06);
+  --el-table-current-row-bg-color: rgba(91, 124, 250, 0.08);
 }
 
 .el-table th.el-table__cell,
@@ -219,7 +238,7 @@ body {
   background: var(--rsod-surface-elevated);
   border-color: var(--rsod-border);
   color: var(--rsod-text-regular);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.12);
 }
 
 .el-select-dropdown,
@@ -249,13 +268,13 @@ body {
   }
 
   &.selected {
-    background: rgba(139, 92, 246, 0.14);
+    background: rgba(91, 124, 250, 0.1);
     color: var(--rsod-primary-light);
     font-weight: 600;
   }
 
   &.is-disabled {
-    color: rgba(115, 124, 137, 0.72);
+    color: #98a2b3;
     background: transparent;
   }
 }
@@ -273,12 +292,12 @@ body {
 
   &.is-selected,
   &.is-active {
-    background: rgba(139, 92, 246, 0.14);
+    background: rgba(91, 124, 250, 0.1);
     color: var(--rsod-primary-light);
   }
 
   &.is-disabled {
-    color: rgba(115, 124, 137, 0.72);
+    color: #98a2b3;
   }
 }
 
@@ -330,7 +349,7 @@ body {
 .el-month-table td.current:not(.disabled) .cell,
 .el-year-table td.current:not(.disabled) .cell {
   background: var(--rsod-primary);
-  color: var(--rsod-text-primary);
+  color: #fff;
 }
 
 .el-date-table td.available:hover,
@@ -351,7 +370,7 @@ body {
 }
 
 .el-tag {
-  border-color: rgba(148, 163, 184, 0.18);
+  border-color: rgba(148, 163, 184, 0.26);
 }
 
 .el-descriptions {
@@ -386,17 +405,17 @@ body {
 }
 
 .el-progress-bar__outer {
-  background-color: rgba(148, 163, 184, 0.16);
+  background-color: #e8eef7;
 }
 
 .el-slider {
   --el-slider-main-bg-color: var(--rsod-primary);
-  --el-slider-runway-bg-color: rgba(148, 163, 184, 0.18);
+  --el-slider-runway-bg-color: #e2e8f0;
 }
 
 .el-slider__button {
   border-color: var(--rsod-primary-light);
-  background: var(--rsod-text-primary);
+  background: #fff;
 }
 
 .el-radio {

@@ -81,7 +81,7 @@ function handleCommand(command) {
 .avatar-menu-header {
   min-width: 180px;
   padding: 10px 14px 9px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
   margin-bottom: 4px;
 
   strong,
@@ -120,19 +120,24 @@ function handleCommand(command) {
   &:hover,
   &:focus-visible {
     border-color: $border-color-strong;
-    background: rgba(139, 92, 246, 0.13);
+    background: rgba(91, 124, 250, 0.08);
+    transform: translateY(-1px);
     outline: none;
   }
 
   &:focus-visible {
-    box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.42);
+    box-shadow: 0 0 0 2px rgba(91, 124, 250, 0.18);
   }
 }
 
 .letter-avatar {
   --el-avatar-bg-color: transparent;
-  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  background: linear-gradient(135deg, #5b7cfa 0%, #8b5cf6 100%);
   color: #fff;
   font-weight: 700;
+  box-shadow:
+    0 10px 22px rgba(91, 124, 250, 0.26),
+    0 0 0 3px rgba(255, 255, 255, 0.86),
+    0 0 0 4px rgba(91, 124, 250, 0.16);
 }
 </style>

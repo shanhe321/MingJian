@@ -964,21 +964,22 @@ onBeforeUnmount(() => {
 }
 
 .user-bubble {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.9), rgba(79, 70, 229, 0.86));
+  background: linear-gradient(135deg, rgba(91, 124, 250, 0.96), rgba(139, 92, 246, 0.9));
   color: #f8fafc;
-  border: 1px solid rgba(167, 139, 250, 0.18);
+  border: 1px solid rgba(91, 124, 250, 0.18);
   border-bottom-right-radius: 6px;
 }
 
 .assistant-bubble {
-  background: rgba(23, 28, 35, 0.52);
-  border: 1px solid transparent;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(248, 251, 255, 0.68));
+  border: 1px solid rgba(226, 232, 240, 0.75);
   color: $text-regular;
   border-bottom-left-radius: 6px;
 
   &.is-error {
-    border-color: rgba(239, 68, 68, 0.36);
-    background: rgba(127, 29, 29, 0.28);
+    border-color: rgba(220, 90, 90, 0.3);
+    background: rgba(254, 242, 242, 0.9);
   }
 }
 
@@ -1007,7 +1008,7 @@ onBeforeUnmount(() => {
     padding: $spacing-xs $spacing-sm;
   }
   :deep(code) {
-    background: rgba(255, 255, 255, 0.06);
+    background: #eef2f7;
     padding: 2px 4px;
     border-radius: 3px;
   }
@@ -1056,7 +1057,8 @@ onBeforeUnmount(() => {
 .tool-calls {
   margin-top: $spacing-sm;
   padding: $spacing-xs $spacing-sm;
-  background: rgba(255, 255, 255, 0.04);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(241, 245, 251, 0.72));
   border-radius: $border-radius-sm;
   border: 1px solid $border-color;
 }
@@ -1114,12 +1116,12 @@ onBeforeUnmount(() => {
   width: fit-content;
 
   &.success {
-    background: rgba(103, 194, 58, 0.1);
+    background: rgba(22, 163, 104, 0.1);
     color: $success-color;
   }
 
   &.empty {
-    background: rgba(144, 147, 153, 0.1);
+    background: rgba(102, 112, 133, 0.1);
     color: $text-secondary;
   }
 }
@@ -1139,14 +1141,18 @@ onBeforeUnmount(() => {
 }
 
 .input-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: $spacing-sm;
   padding: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(203, 213, 225, 0.9);
   border-radius: 22px;
-  background: rgba(28, 34, 43, 0.86);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.9));
+  box-shadow:
+    0 18px 48px rgba(40, 58, 96, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
   transition:
     border-color 0.18s ease,
     box-shadow 0.18s ease,
@@ -1154,8 +1160,19 @@ onBeforeUnmount(() => {
 
   &:focus-within {
     border-color: $border-color-strong;
-    background: rgba(31, 38, 48, 0.94);
-    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.11);
+    background: #fff;
+    box-shadow:
+      0 0 0 3px rgba(91, 124, 250, 0.1),
+      0 20px 54px rgba(91, 124, 250, 0.13);
+  }
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 1px 12px auto;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(91, 124, 250, 0.24), transparent);
+    pointer-events: none;
   }
 
   .el-textarea {
@@ -1198,11 +1215,23 @@ onBeforeUnmount(() => {
 .send-btn {
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, $primary-color-light, $primary-color);
+  background: linear-gradient(135deg, $primary-color, $primary-color-light);
   border-color: transparent;
+  box-shadow: 0 10px 24px rgba(91, 124, 250, 0.22);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    filter 0.18s ease;
+
+  &:not(.is-disabled):hover,
+  &:not(.is-disabled):focus {
+    filter: brightness(1.04);
+    transform: translateY(-1px);
+    box-shadow: 0 14px 30px rgba(91, 124, 250, 0.26);
+  }
 
   &.is-disabled {
-    background: rgba(148, 163, 184, 0.18);
+    background: rgba(148, 163, 184, 0.22);
     border-color: transparent;
   }
 }
@@ -1230,7 +1259,8 @@ onBeforeUnmount(() => {
   gap: $spacing-sm;
   margin: 0 0 $spacing-sm;
   padding: $spacing-sm;
-  background: rgba(28, 34, 43, 0.7);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 251, 255, 0.82));
   border: 1px solid $border-color;
   border-radius: 14px;
   font-size: 13px;
@@ -1258,7 +1288,7 @@ onBeforeUnmount(() => {
   width: 42px;
   height: 42px;
   border-radius: 10px;
-  background: rgba(139, 92, 246, 0.12);
+  background: linear-gradient(135deg, rgba(91, 124, 250, 0.12), rgba(139, 92, 246, 0.1));
   color: $primary-color-light;
   flex-shrink: 0;
 }
@@ -1317,7 +1347,7 @@ onBeforeUnmount(() => {
     text-overflow: ellipsis;
     white-space: nowrap;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(241, 245, 251, 0.9);
     color: $text-secondary;
     font-size: 12px;
     padding: 3px 9px;
@@ -1365,7 +1395,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(139, 92, 246, 0.1);
+  background: rgba(91, 124, 250, 0.08);
   border: 2px dashed $primary-color;
   pointer-events: none;
   z-index: 10;

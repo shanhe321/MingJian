@@ -19,7 +19,7 @@
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-icon stat-icon-tasks">
-            <el-icon :size="28" color="#a78bfa"><Document /></el-icon>
+            <el-icon :size="28" color="#5b7cfa"><Document /></el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ stats.total_tasks }}</div>
@@ -33,7 +33,7 @@
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-icon stat-icon-images">
-            <el-icon :size="28" color="#22c55e"><PictureFilled /></el-icon>
+            <el-icon :size="28" color="#48b8f7"><PictureFilled /></el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ formatNumber(stats.total_images) }}</div>
@@ -47,7 +47,7 @@
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-icon stat-icon-objects">
-            <el-icon :size="28" color="#f59e0b"><Aim /></el-icon>
+            <el-icon :size="28" color="#8b5cf6"><Aim /></el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ formatNumber(stats.total_objects) }}</div>
@@ -61,7 +61,7 @@
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-icon stat-icon-time">
-            <el-icon :size="28" color="#ef4444"><Timer /></el-icon>
+            <el-icon :size="28" color="#d99018"><Timer /></el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ stats.avg_inference_time }}<span class="unit">ms</span></div>
@@ -176,7 +176,7 @@ let trendChart = null
 let classChart = null
 let sceneChart = null
 let typeChart = null
-const CHART_THEME = 'dark'
+const CHART_THEME = undefined
 
 // ── 格式化函数 ──
 function formatNumber(num) {
@@ -280,11 +280,11 @@ function renderTrendChart(trend = []) {
         lineStyle: { width: 2 },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(64,158,255,0.3)' },
-            { offset: 1, color: 'rgba(64,158,255,0.02)' },
+            { offset: 0, color: 'rgba(91,124,250,0.22)' },
+            { offset: 1, color: 'rgba(91,124,250,0.02)' },
           ]),
         },
-        itemStyle: { color: '#409eff' },
+        itemStyle: { color: '#5b7cfa' },
       },
       {
         name: '检测目标',
@@ -295,11 +295,11 @@ function renderTrendChart(trend = []) {
         lineStyle: { width: 2 },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(103,194,58,0.3)' },
-            { offset: 1, color: 'rgba(103,194,58,0.02)' },
+            { offset: 0, color: 'rgba(72,184,247,0.2)' },
+            { offset: 1, color: 'rgba(72,184,247,0.02)' },
           ]),
         },
-        itemStyle: { color: '#67c23a' },
+        itemStyle: { color: '#48b8f7' },
       },
     ],
   })
@@ -335,7 +335,7 @@ function renderClassChart(distribution = []) {
           itemStyle: {
             shadowBlur: 10,
             shadowOffsetX: 0,
-            shadowColor: 'rgba(0,0,0,0.3)',
+            shadowColor: 'rgba(15,23,42,0.12)',
           },
         },
         label: {
@@ -383,8 +383,8 @@ function renderSceneChart(distribution = []) {
         itemStyle: {
           borderRadius: [0, 4, 4, 0],
           color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: '#409eff' },
-            { offset: 1, color: '#79bbff' },
+            { offset: 0, color: '#5b7cfa' },
+            { offset: 1, color: '#48b8f7' },
           ]),
         },
         label: {
@@ -404,7 +404,7 @@ function renderTypeChart(distribution = []) {
     typeChart = echarts.init(typeChartRef.value, CHART_THEME)
   }
 
-  const colors = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#909399']
+  const colors = ['#5b7cfa', '#8b5cf6', '#48b8f7', '#16a368', '#d99018']
 
   typeChart.setOption({
     backgroundColor: 'transparent',
@@ -487,6 +487,17 @@ onBeforeUnmount(() => {
   color: $text-primary;
   font-size: 26px;
   font-weight: 650;
+  position: relative;
+
+  &::after {
+    content: "";
+    display: block;
+    width: 74px;
+    height: 3px;
+    margin-top: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, $primary-color, $primary-color-light, #48b8f7);
+  }
 }
 
 .page-title-copy p {
@@ -502,7 +513,22 @@ onBeforeUnmount(() => {
 
 .stat-card {
   border-radius: $border-radius-lg;
-  background: rgba(24, 29, 36, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.86));
+  border: 1px solid $border-color;
+  box-shadow:
+    $shadow-sm,
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+
+  &:hover {
+    border-color: $border-color-strong;
+    transform: translateY(-2px);
+    box-shadow: $shadow-md;
+  }
 
   :deep(.el-card__body) {
     display: flex;
@@ -521,6 +547,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   flex-shrink: 0;
   border: 1px solid rgba(148, 163, 184, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
 .stat-icon-tasks {
@@ -528,15 +555,15 @@ onBeforeUnmount(() => {
 }
 
 .stat-icon-images {
-  background: rgba(34, 197, 94, 0.12);
+  background: rgba(72, 184, 247, 0.12);
 }
 
 .stat-icon-objects {
-  background: rgba(245, 158, 11, 0.12);
+  background: rgba(139, 92, 246, 0.12);
 }
 
 .stat-icon-time {
-  background: rgba(239, 68, 68, 0.12);
+  background: rgba(217, 144, 24, 0.12);
 }
 
 .stat-info {
@@ -569,14 +596,14 @@ onBeforeUnmount(() => {
   margin-top: 4px;
 
   &.growth-up {
-    color: #67c23a;
+    color: $success-color;
     &::before {
       content: '↑ ';
     }
   }
 
   &.growth-down {
-    color: #f56c6c;
+    color: $danger-color;
     &::before {
       content: '↓ ';
     }
@@ -593,16 +620,21 @@ onBeforeUnmount(() => {
 
   :deep(.el-card) {
     border-radius: $border-radius-lg;
-    background: rgba(24, 29, 36, 0.72);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.88));
+    border-color: $border-color;
+    box-shadow:
+      $shadow-sm,
+      inset 0 1px 0 rgba(255, 255, 255, 0.95);
   }
 }
 
 .dashboard-empty-note {
   margin: 0 0 $spacing-md;
   padding: 12px 14px;
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  border: 1px solid $border-color;
   border-radius: $border-radius-lg;
-  background: rgba(139, 92, 246, 0.08);
+  background: rgba(91, 124, 250, 0.06);
   color: $text-secondary;
   font-size: 13px;
 }
@@ -611,7 +643,9 @@ onBeforeUnmount(() => {
   height: 320px;
   width: 100%;
   border-radius: $border-radius-md;
-  background: rgba(18, 22, 28, 0.36);
+  background:
+    radial-gradient(circle at 80% 0, rgba(91, 124, 250, 0.06), transparent 36%),
+    rgba(248, 250, 255, 0.88);
 }
 
 @media (max-width: 900px) {

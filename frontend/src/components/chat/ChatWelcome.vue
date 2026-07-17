@@ -38,19 +38,48 @@ const prompts = [
   padding: $spacing-xl $spacing-md;
   text-align: center;
   color: $text-regular;
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 12% 16% auto;
+    height: 220px;
+    background:
+      radial-gradient(circle at 55% 40%, rgba(91, 124, 250, 0.12), transparent 60%),
+      radial-gradient(circle at 35% 35%, rgba(139, 92, 246, 0.1), transparent 58%);
+    filter: blur(8px);
+    pointer-events: none;
+    z-index: -1;
+  }
 }
 
 .welcome-mark {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   margin-bottom: $spacing-md;
-  border: 1px solid rgba(167, 139, 250, 0.24);
-  border-radius: 16px;
-  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(91, 124, 250, 0.22);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(245, 248, 255, 0.64)),
+    linear-gradient(135deg, rgba(91, 124, 250, 0.14), rgba(139, 92, 246, 0.12));
   color: $primary-color-light;
+  box-shadow:
+    0 18px 42px rgba(91, 124, 250, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -18px;
+    border-radius: 26px;
+    background: radial-gradient(circle, rgba(91, 124, 250, 0.16), transparent 68%);
+    z-index: -1;
+  }
 
   .el-icon {
     font-size: 24px;
@@ -84,8 +113,12 @@ p {
     height: 34px;
     border: 1px solid $border-color;
     border-radius: 999px;
-    background: rgba(28, 34, 43, 0.74);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(246, 249, 255, 0.78));
     color: $text-secondary;
+    box-shadow:
+      0 8px 22px rgba(40, 58, 96, 0.05),
+      inset 0 1px 0 rgba(255, 255, 255, 0.92);
     cursor: pointer;
     padding: 0 14px;
     transition:
@@ -96,8 +129,11 @@ p {
     &:hover,
     &:focus-visible {
       border-color: $border-color-strong;
-      background: $surface-color-elevated;
+      background:
+        linear-gradient(135deg, rgba(91, 124, 250, 0.1), rgba(139, 92, 246, 0.08)),
+        #fff;
       color: $text-primary;
+      transform: translateY(-1px);
       outline: none;
     }
   }

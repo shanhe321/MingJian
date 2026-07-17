@@ -42,10 +42,13 @@ function go(path) {
   align-items: center;
   gap: 2px;
   padding: 3px;
-  border: 1px solid $border-color;
+  border: 1px solid rgba(207, 216, 230, 0.92);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.055);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(239, 244, 252, 0.72));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 10px 24px rgba(40, 58, 96, 0.08);
   user-select: none;
 }
 
@@ -72,15 +75,17 @@ function go(path) {
   }
 
   &:focus-visible {
-    box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.42);
+    box-shadow: 0 0 0 2px rgba(91, 124, 250, 0.18);
   }
 
   &.is-active {
-    background: rgba(139, 92, 246, 0.2);
-    color: $text-primary;
+    background:
+      linear-gradient(135deg, rgba(91, 124, 250, 0.14), rgba(139, 92, 246, 0.12)),
+      #fff;
+    color: $primary-color-dark;
     box-shadow:
-      inset 0 0 0 1px rgba(167, 139, 250, 0.18),
-      0 8px 22px rgba(0, 0, 0, 0.18);
+      inset 0 0 0 1px rgba(91, 124, 250, 0.18),
+      0 8px 22px rgba(91, 124, 250, 0.12);
   }
 }
 </style>
