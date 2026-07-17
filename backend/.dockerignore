@@ -1,0 +1,37 @@
+# 敏感配置（通过 docker-compose env_file 注入）
+.env
+.env.*
+*.env
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+# 虚拟环境
+venv/
+.venv/
+# 版本控制
+.git/
+.gitignore
+# IDE
+.vscode/
+.idea/
+# 测试
+.pytest_cache/
+.coverage
+# 文档
+*.md
+docs/
+# 日志
+logs/
+*.log
+# Docker 自身
+Dockerfile
+.dockerignore
+docker-compose*.yml
+# CI/CD
+.github/
+# 数据集（不进镜像）
+datasets.tar.gz
+PCB-YOLO/
