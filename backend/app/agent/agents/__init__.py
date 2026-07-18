@@ -1,7 +1,7 @@
-"""LangGraph 多 Agent 的检测、分析和知识问答子 Agent。"""
+"""需求定义的 Management、Detection、Analysis 三个子 Agent。"""
 
 from app.agent.agents.analysis_agent import AnalysisSubAgent
 from app.agent.agents.detection_agent import DetectionSubAgent
-from app.agent.agents.qa_agent import QASubAgent
+from app.agent.agents.management_agent import ManagementSubAgent
 
-__all__ = ["AnalysisSubAgent", "DetectionSubAgent", "QASubAgent"]
+__all__ = ["ManagementSubAgent", "DetectionSubAgent", "AnalysisSubAgent"]

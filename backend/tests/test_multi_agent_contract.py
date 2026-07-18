@@ -1,4 +1,5 @@
 import json
+import importlib
 from types import SimpleNamespace
 
 import pytest
@@ -6,18 +7,19 @@ from langchain_core.messages import HumanMessage
 
 from app.agent.agents.analysis_agent import AnalysisSubAgent
 from app.agent.agents.detection_agent import DetectionSubAgent
-from app.agent.agents.qa_agent import QASubAgent
+from app.agent.agents.management_agent import ManagementSubAgent
 from app.agent.graph import build_agent_graph
 from app.agent.prompts import (
     ANALYSIS_SUB_AGENT_PROMPT,
     DETECTION_AGENT_SYSTEM_PROMPT,
     DETECTION_SUB_AGENT_PROMPT,
-    QA_SUB_AGENT_PROMPT,
+    MANAGEMENT_SUB_AGENT_PROMPT,
     SUPERVISOR_ROUTING_PROMPT,
     SUPERVISOR_SUMMARY_PROMPT,
 )
 from app.agent.supervisor import SupervisorAgent
-from app.agent.tools.analysis_tool import ANALYSIS_TOOLS
+from app.config.settings import settings
+from app.agent.tools.analysis_tool import ANALYSIS_TOOLS, MANAGEMENT_TOOLS
 from app.agent.tools.detection_tool import (
     DETECTION_TOOLS,
     detect_batch_images,
@@ -38,6 +40,28 @@ class QueueLLM:
         return SimpleNamespace(content=self.responses.pop(0))
 
 
+def test_only_explicit_supervisor_llm_disables_qwen_thinking(monkeypatch):
+    module = importlib.import_module("app.agent.detection_agent")
+    captured = []
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            captured.append(kwargs)
+
+    monkeypatch.setattr(module, "ChatOpenAI", FakeChatOpenAI)
+    monkeypatch.setattr(settings, "QWEN_API_KEY", "sk-real-qwen")
+    module.create_llm()
+    assert "extra_body" not in captured[-1]
+
+    module.create_llm(enable_thinking=False)
+    assert captured[-1]["extra_body"] == {"enable_thinking": False}
+
+    monkeypatch.setattr(settings, "QWEN_API_KEY", "sk-your-qwen-api-key")
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-openai")
+    module.create_llm()
+    assert "extra_body" not in captured[-1]
+
+
 def test_prompts_match_pcb_project_and_permission_boundaries():
     combined = "\n".join(
         [
@@ -45,7 +69,7 @@ def test_prompts_match_pcb_project_and_permission_boundaries():
             SUPERVISOR_ROUTING_PROMPT,
             DETECTION_SUB_AGENT_PROMPT,
             ANALYSIS_SUB_AGENT_PROMPT,
-            QA_SUB_AGENT_PROMPT,
+            MANAGEMENT_SUB_AGENT_PROMPT,
             SUPERVISOR_SUMMARY_PROMPT,
         ]
     )
@@ -72,8 +96,9 @@ def test_prompts_match_pcb_project_and_permission_boundaries():
     [
         ("detection", "detection"),
         ("analysis", "analysis"),
-        ("qa", "qa"),
-        ("无法判断", "qa"),
+        ("management", "management"),
+        ("qa", "analysis"),
+        ("无法判断", "analysis"),
     ],
 )
 async def test_supervisor_normalizes_routes(response, expected):
@@ -91,7 +116,8 @@ async def test_supervisor_normalizes_routes(response, expected):
 
 @pytest.mark.asyncio
 async def test_graph_routes_to_analysis_and_summarizes():
-    llm = QueueLLM(["analysis", "已汇总分析结果"])
+    worker_llm = QueueLLM([])
+    supervisor_llm = QueueLLM(["analysis", "已汇总分析结果"])
     called = []
 
     async def detection_node(state):
@@ -106,11 +132,17 @@ async def test_graph_routes_to_analysis_and_summarizes():
             "agent_used": "analysis",
         }
 
-    async def qa_node(state):
-        called.append("qa")
-        return {"qa_result": "问答"}
+    async def management_node(state):
+        called.append("management")
+        return {"management_result": {"output": "管理查询"}}
 
-    graph = build_agent_graph(llm, detection_node, analysis_node, qa_node)
+    graph = build_agent_graph(
+        worker_llm,
+        management_node,
+        detection_node,
+        analysis_node,
+        supervisor_llm=supervisor_llm,
+    )
     result = await graph.ainvoke(
         {
             "messages": [HumanMessage(content="最近检测了多少次？")],
@@ -124,6 +156,8 @@ async def test_graph_routes_to_analysis_and_summarizes():
     assert called == ["analysis"]
     assert result["agent_used"] == "analysis"
     assert result["final_response"] == "已汇总分析结果"
+    assert len(supervisor_llm.calls) == 2
+    assert worker_llm.calls == []
 
 
 def test_sub_agents_bind_only_their_documented_tools(monkeypatch):
@@ -139,11 +173,11 @@ def test_sub_agents_bind_only_their_documented_tools(monkeypatch):
 
     detection = DetectionSubAgent(object())
     analysis = AnalysisSubAgent(object())
-    qa = QASubAgent(object())
+    management = ManagementSubAgent(object())
 
     assert [tool.name for tool in detection.tools] == [tool.name for tool in DETECTION_TOOLS]
-    assert [tool.name for tool in analysis.tools] == [tool.name for tool in ANALYSIS_TOOLS]
-    assert [tool.name for tool in qa.tools] == [tool.name for tool in KNOWLEDGE_TOOLS]
+    assert [tool.name for tool in analysis.tools] == [tool.name for tool in ANALYSIS_TOOLS + KNOWLEDGE_TOOLS]
+    assert [tool.name for tool in management.tools] == [tool.name for tool in MANAGEMENT_TOOLS]
 
 
 @pytest.mark.parametrize(

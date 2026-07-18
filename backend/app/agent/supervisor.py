@@ -1,4 +1,4 @@
-"""Supervisor：识别意图并在检测、分析和知识问答 Agent 之间路由。"""
+"""Supervisor：在 Management、Detection、Analysis 三个 Agent 之间路由。"""
 
 from typing import Any
 
@@ -63,15 +63,17 @@ class SupervisorAgent:
 
     @staticmethod
     def _normalize_route(value: str) -> str:
+        if "management" in value or "管理" in value or "用户列表" in value or "权限" in value:
+            return "management"
         if "detection" in value or "检测" in value:
             return "detection"
         if "analysis" in value or "分析" in value or "统计" in value:
             return "analysis"
-        return "qa"
+        return "analysis"
 
     def decide_next(self, state: dict) -> str:
         """LangGraph 条件边使用的路由函数。"""
-        return self._normalize_route(str(state.get("next_agent", "qa")))
+        return self._normalize_route(str(state.get("next_agent", "analysis")))
 
     async def summarize(
         self,
@@ -81,9 +83,9 @@ class SupervisorAgent:
         """将子 Agent 结果汇总为面向用户的中文回复。"""
         context_parts = []
         for label, key in (
+            ("管理查询结果", "management_result"),
             ("检测结果", "detection_result"),
             ("分析结果", "analysis_result"),
-            ("知识问答结果", "qa_result"),
         ):
             value = state.get(key)
             if value:

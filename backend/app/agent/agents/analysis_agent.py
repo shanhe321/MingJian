@@ -3,6 +3,7 @@
 from app.agent.agents.base import ToolAgentNode
 from app.agent.prompts import ANALYSIS_SUB_AGENT_PROMPT
 from app.agent.tools.analysis_tool import ANALYSIS_TOOLS
+from app.agent.tools.knowledge_tool import KNOWLEDGE_TOOLS
 
 
 class AnalysisSubAgent(ToolAgentNode):
@@ -10,4 +11,4 @@ class AnalysisSubAgent(ToolAgentNode):
     agent_name = "analysis"
 
     def __init__(self, llm):
-        super().__init__(llm, ANALYSIS_TOOLS, ANALYSIS_SUB_AGENT_PROMPT)
+        super().__init__(llm, ANALYSIS_TOOLS + KNOWLEDGE_TOOLS, ANALYSIS_SUB_AGENT_PROMPT)

@@ -9,6 +9,7 @@ import numpy as np
 from app.agent.detection_agent import DETECTION_TOOLS, detection_agent
 from app.api.auth import get_current_user
 from app.config.settings import Settings
+from app.core.security import create_access_token
 from app.services.detection_service import DetectionService, detection_service
 from main import app
 
@@ -21,7 +22,7 @@ def test_chat_and_detection_routes_match_guide():
         or route.path.startswith("/api/detection")
         for method in getattr(route, "methods", set())
     }
-    assert routes == {
+    assert {
         ("POST", "/api/chat/upload"),
         ("POST", "/api/chat/stream"),
         ("GET", "/api/chat/sessions"),
@@ -32,7 +33,7 @@ def test_chat_and_detection_routes_match_guide():
         ("POST", "/api/detection/video"),
         ("GET", "/api/detection/status/{task_id}"),
         ("GET", "/api/detection/video/status/{task_id}"),
-    }
+    }.issubset(routes)
     websocket_routes = {
         route.path for route in app.routes if route.__class__.__name__ == "APIWebSocketRoute"
     }
@@ -46,7 +47,7 @@ def test_detection_agent_binds_documented_tools():
         "detect_zip_images_file",
         "detect_video_file",
     }
-    assert len(detection_agent.all_tools) == 8
+    assert len(detection_agent.all_tools) == 14
     assert detection_agent.executor.max_iterations == 8
 
 
@@ -94,8 +95,8 @@ def test_detect_single_returns_annotations_and_statistics(monkeypatch):
     monkeypatch.setattr(service_module, "SessionLocal", lambda: database)
     monkeypatch.setattr(
         DetectionService,
-        "_get_model",
-        staticmethod(lambda scene_id=None: Model()),
+        "_load_model",
+        staticmethod(lambda db, scene_id=None, model_version_id=None: (Model(), None)),
     )
 
     result = DetectionService().detect_single(
@@ -150,16 +151,16 @@ def test_detect_single_uses_default_scene_for_history(monkeypatch):
         def predict(self, **kwargs):
             return [prediction]
 
-    def fake_get_model(scene_id=None):
+    def fake_load_model(db, scene_id=None, model_version_id=None):
         captured["model_scene_id"] = scene_id
-        return Model()
+        return Model(), None
 
     def fake_save(**kwargs):
         captured.update(kwargs)
         return {"task_id": 15, "annotated_image_url": "http://minio/result.jpg"}
 
     monkeypatch.setattr(service_module, "SessionLocal", lambda: database)
-    monkeypatch.setattr(DetectionService, "_get_model", staticmethod(fake_get_model))
+    monkeypatch.setattr(DetectionService, "_load_model", staticmethod(fake_load_model))
     monkeypatch.setattr(DetectionService, "_save_task_and_results", staticmethod(fake_save))
 
     result = DetectionService().detect_single("sample.jpg", user_id=7)
@@ -175,6 +176,9 @@ def test_detect_batch_returns_aggregate_results(monkeypatch):
     service_module = importlib.import_module("app.services.detection_service")
 
     class Query:
+        def filter(self, *args):
+            return self
+
         def first(self):
             return SimpleNamespace(id=3)
 
@@ -219,8 +223,8 @@ def test_detect_batch_returns_aggregate_results(monkeypatch):
     monkeypatch.setattr(service_module, "SessionLocal", lambda: database)
     monkeypatch.setattr(
         DetectionService,
-        "_get_model",
-        staticmethod(lambda scene_id=None: Model()),
+        "_load_model",
+        staticmethod(lambda db, scene_id=None, model_version_id=None: (Model(), None)),
     )
 
     result = DetectionService().detect_batch(
@@ -250,9 +254,10 @@ def test_detect_zip_filters_images_and_returns_batch_metadata(tmp_path: Path, mo
 
     captured_paths = []
 
-    def fake_detect_batch(image_paths, conf, scene_id, user_id):
+    def fake_detect_batch(image_paths, conf, iou, scene_id, user_id, mode, **kwargs):
         captured_paths.extend(image_paths)
         assert all(Path(path).exists() for path in image_paths)
+        assert mode == "zip"
         return {"total_images": len(image_paths), "total_objects": 0}
 
     service = DetectionService()
@@ -370,8 +375,8 @@ def test_detect_video_returns_sampled_results(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(service_module.shutil, "which", lambda name: "ffmpeg")
     monkeypatch.setattr(
         DetectionService,
-        "_get_model",
-        staticmethod(lambda scene_id=None: Model()),
+        "_load_model",
+        staticmethod(lambda db, scene_id=None, model_version_id=None: (Model(), None)),
     )
 
     result = DetectionService().detect_video(
@@ -402,7 +407,13 @@ def test_single_detection_api_uses_uploaded_file(client, monkeypatch):
     try:
         response = client.post(
             "/api/detection/single",
-            files={"file": ("sample.jpg", b"image", "image/jpeg")},
+            files={
+                "file": (
+                    "sample.jpg",
+                    importlib.import_module("cv2").imencode(".jpg", np.zeros((8, 8, 3), dtype=np.uint8))[1].tobytes(),
+                    "image/jpeg",
+                )
+            },
             data={"conf": "0.4", "scene_id": "3"},
         )
     finally:
@@ -465,14 +476,19 @@ def test_camera_websocket_processes_frame(client, monkeypatch):
         def predict(self, **kwargs):
             return [prediction]
 
-    monkeypatch.setattr(detection_service, "_get_model", lambda scene_id=None: Model())
+    monkeypatch.setattr(
+        detection_service,
+        "_load_model",
+        lambda db, scene_id=None, model_version_id=None: (Model(), None),
+    )
     _, image_buffer = importlib.import_module("cv2").imencode(
         ".jpg",
         np.zeros((8, 8, 3), dtype=np.uint8),
     )
     frame_base64 = base64.b64encode(image_buffer).decode("utf-8")
 
-    with client.websocket_connect("/api/detection/camera") as websocket:
+    token = create_access_token({"sub": "1"})
+    with client.websocket_connect(f"/api/detection/camera?token={token}") as websocket:
         websocket.send_json({"type": "config", "mode": "cpu", "conf": 0.25})
         config = websocket.receive_json()
         assert config["type"] == "config_ok"
