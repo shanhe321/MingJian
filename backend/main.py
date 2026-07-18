@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+import threading
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config.settings import settings
 
@@ -10,14 +12,18 @@ from app.middleware.request_logger import RequestLogMiddleware
 from app.middleware.rate_limiter import RateLimiterMiddleware
 
 from app.api.auth import router as auth_router
+from app.api.audit import router as audit_router
 from app.api.chat import router as chat_router
 from app.api.dashboard import router as dashboard_router
+from app.api.datasets import router as datasets_router
 from app.api.detection import router as detection_router
 from app.api.health import router as health_router
 from app.api.history import router as history_router
 from app.api.knowledge import router as knowledge_router
 from app.api.training import router as training_router
 from app.api.user import router as user_router
+from app.api.storage import router as storage_router
+from app.api.scenes import router as scenes_router
 
 def init_minio():
     """初始化 MinIO 存储桶"""
@@ -29,15 +35,49 @@ def init_minio():
         print(f"MinIO 初始化失败: {e}")
 
 
+_maintenance_stop = threading.Event()
+
+
+def _maintenance_loop():
+    from app.services.quality_service import refresh_recent_snapshots
+    from app.services.upload_service import cleanup_orphan_temp_files
+
+    while not _maintenance_stop.is_set():
+        try:
+            cleanup_orphan_temp_files()
+            refresh_recent_snapshots()
+        except Exception as exc:
+            print(f"后台维护任务失败: {exc}")
+        _maintenance_stop.wait(3600)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """应用生命周期管理"""
     # 启动时执行
     print("正在初始化服务...")
+    from app.services.bootstrap_service import ensure_bootstrap_admin
+    ensure_bootstrap_admin()
     init_minio()
+    from app.services.detection_service import detection_service
+    from app.services.quality_service import refresh_all_snapshots
+    from app.training.training_service import training_service
+    try:
+        refresh_all_snapshots()
+        recovered = detection_service.recover_incomplete_tasks()
+        if recovered:
+            print(f"已恢复 {recovered} 个未完成检测任务")
+        recovered_training = training_service.recover_incomplete_tasks()
+        if recovered_training:
+            print(f"已恢复 {recovered_training} 个未完成训练任务")
+    except Exception as exc:
+        print(f"启动恢复任务失败: {exc}")
+    _maintenance_stop.clear()
+    threading.Thread(target=_maintenance_loop, daemon=True, name="rsod-maintenance").start()
     yield
     # 关闭时执行（如果需要）
     print("服务已关闭")
+    _maintenance_stop.set()
 
 
 # 创建 FastAPI 实例
@@ -65,6 +105,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+if settings.trusted_hosts_list:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts_list)
+
 # 2. 请求日志中间件（在 CORS 之后执行）
 app.add_middleware(RequestLogMiddleware)
 
@@ -73,14 +116,18 @@ app.add_middleware(RateLimiterMiddleware)
 
 # ── 注册路由 ─────────────────────────────────────────
 app.include_router(auth_router)
+app.include_router(audit_router)
 app.include_router(health_router)
 app.include_router(training_router)
 app.include_router(chat_router)
 app.include_router(detection_router)
 app.include_router(dashboard_router)
+app.include_router(datasets_router)
 app.include_router(history_router)
 app.include_router(user_router)
 app.include_router(knowledge_router)
+app.include_router(storage_router)
+app.include_router(scenes_router)
 
 @app.get("/")
 def root():
@@ -93,4 +140,4 @@ def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=settings.DEBUG)

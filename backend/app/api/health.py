@@ -11,8 +11,9 @@
   - 任一服务不可用时不抛异常，而是标记为 unhealthy
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.api.auth import require_admin
 from app.config.settings import settings
 from app.core.logger import get_logger
 
@@ -60,7 +61,7 @@ async def health_check_detail():
         db.close()
         services["database"] = {"status": "healthy", "message": "PostgreSQL 连接正常"}
     except Exception as e:
-        services["database"] = {"status": "unhealthy", "message": f"PostgreSQL 连接失败: {str(e)}"}
+        services["database"] = {"status": "unhealthy", "message": "PostgreSQL 连接失败"}
         logger.error("PostgreSQL 健康检查失败: %s", str(e))
 
     # ── 检查 Redis ───────────────────────────────────
@@ -71,7 +72,7 @@ async def health_check_detail():
         r.close()
         services["redis"] = {"status": "healthy", "message": "Redis 连接正常"}
     except Exception as e:
-        services["redis"] = {"status": "unhealthy", "message": f"Redis 连接失败: {str(e)}"}
+        services["redis"] = {"status": "unhealthy", "message": "Redis 连接失败"}
         logger.error("Redis 健康检查失败: %s", str(e))
 
     # ── 检查 MinIO ───────────────────────────────────
@@ -81,7 +82,7 @@ async def health_check_detail():
         minio.client.list_buckets()
         services["minio"] = {"status": "healthy", "message": "MinIO 连接正常"}
     except Exception as e:
-        services["minio"] = {"status": "unhealthy", "message": f"MinIO 连接失败: {str(e)}"}
+        services["minio"] = {"status": "unhealthy", "message": "MinIO 连接失败"}
         logger.error("MinIO 健康检查失败: %s", str(e))
 
     # ── 汇总状态 ─────────────────────────────────────
@@ -100,19 +101,23 @@ async def health_check_detail():
 
 
 @router.get("/api/health/redis")
-async def redis_debug():
-    """查看 Redis 中存储的全部调试数据。"""
+async def redis_debug(_admin=Depends(require_admin)):
+    """查看 Redis 键分布，不返回会话、Token 或任务结果正文。"""
     try:
         from app.storage.redis_client import redis_client
 
-        data = redis_client.get_all_data()
+        keys = [str(key) for key in redis_client.keys()]
+        groups = {}
+        for key in keys:
+            prefix = key.split(":", 1)[0]
+            groups[prefix] = groups.get(prefix, 0) + 1
         return {
             "code": 200,
             "message": "ok",
             "data": {
                 "use_redis": redis_client.info()["use_redis"],
-                "key_count": len(data),
-                "data": data,
+                "key_count": len(keys),
+                "key_groups": groups,
             },
         }
     except Exception as exc:
@@ -124,7 +129,7 @@ async def redis_debug():
 
 
 @router.get("/api/health/redis/info")
-async def redis_info():
+async def redis_info(_admin=Depends(require_admin)):
     """查看 Redis 客户端状态。"""
     try:
         from app.storage.redis_client import redis_client

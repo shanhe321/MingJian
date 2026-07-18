@@ -4,6 +4,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.storage.redis_client import redis_client
+from app.config.settings import settings
 
 
 class RateLimiterMiddleware(BaseHTTPMiddleware):
@@ -32,18 +33,15 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         key = f"rate_limit:{path}:{client_ip}"
 
         try:
-            current = redis_client.get(key)
-            if current is None:
-                current = 1
-            else:
-                current = int(current) + 1
-            redis_client.set(key, current, expire=limit_config["window"])
+            current = redis_client.increment_with_expiry(
+                key, limit_config["window"]
+            )
 
             if current > limit_config["limit"]:
                 return Response(
                     content=(
-                        '{"error": "Rate limit exceeded", '
-                        '"message": "Too many requests, please try again later"}'
+                        '{"code":429,"message":"请求过于频繁，请稍后重试",'
+                        '"data":null}'
                     ),
                     status_code=429,
                     media_type="application/json",
@@ -55,10 +53,11 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _get_client_ip(request: Request) -> str:
-        forwarded_for = request.headers.get("x-forwarded-for")
-        if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
-        real_ip = request.headers.get("x-real-ip")
-        if real_ip:
-            return real_ip
+        if settings.TRUST_PROXY_HEADERS:
+            forwarded_for = request.headers.get("x-forwarded-for")
+            if forwarded_for:
+                return forwarded_for.split(",")[0].strip()
+            real_ip = request.headers.get("x-real-ip")
+            if real_ip:
+                return real_ip
         return request.client.host if request.client else "unknown"
