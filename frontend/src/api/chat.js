@@ -8,10 +8,14 @@ import request from '@/utils/request'
 
 /**
  * 获取当前用户的历史会话 ID 列表
- * @returns {Promise<{ sessions: string[] }>}
+ * @returns {Promise<{ sessions: string[], items: Array<{session_id:string,title:string}> }>}
  */
 export function getChatSessions() {
   return request.get('/chat/sessions')
+}
+
+export function getChatSessionHistory(sessionId) {
+  return request.get(`/chat/sessions/${sessionId}`)
 }
 
 /**

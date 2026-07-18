@@ -41,10 +41,22 @@ const routes = [
         meta: { title: '检测工作台', icon: 'Camera' },
       },
       {
+        path: 'datasets',
+        name: 'Datasets',
+        component: () => import('@/views/DatasetsPage.vue'),
+        meta: { title: '数据集管理', icon: 'FolderOpened' },
+      },
+      {
         path: 'training',
         name: 'Training',
         component: () => import('@/views/TrainingPage.vue'),
         meta: { title: '模型训练', icon: 'Cpu' },
+      },
+      {
+        path: 'models',
+        name: 'Models',
+        component: () => import('@/views/ModelsPage.vue'),
+        meta: { title: '模型版本', icon: 'Box' },
       },
       {
         path: 'history',
@@ -64,6 +76,12 @@ const routes = [
         component: () => import('@/views/SettingsPage.vue'),
         meta: { title: '系统设置', icon: 'Setting' },
       },
+      {
+        path: 'admin',
+        name: 'Admin',
+        component: () => import('@/views/AdminPage.vue'),
+        meta: { title: '系统管理', icon: 'Setting', requiresAdmin: true },
+      },
     ],
   },
 
@@ -81,7 +99,7 @@ const router = createRouter({
 })
 
 // ── 路由守卫 ────────────────────────────────────────
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   // 设置页面标题
   document.title = to.meta.title
     ? `${to.meta.title} - RSOD Agent Platform`
@@ -97,6 +115,18 @@ router.beforeEach((to, from, next) => {
   } else if ((to.path === '/login' || to.path === '/register') && token) {
     // 已登录用户访问登录/注册页，跳转到首页
     next('/')
+  } else if (to.matched.some((record) => record.meta.requiresAdmin)) {
+    const { useUserStore } = await import('@/stores/user')
+    const userStore = useUserStore()
+    if (!userStore.user) {
+      await userStore.fetchUserInfo()
+      if (!userStore.user) {
+        next({ path: '/login', query: { redirect: to.fullPath } })
+        return
+      }
+    }
+    if (userStore.isSuperuser) next()
+    else next('/dashboard')
   } else {
     next()
   }

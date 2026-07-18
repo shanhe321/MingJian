@@ -52,3 +52,11 @@ export function getHistorySummary() {
 export function getScenes() {
   return request.get('/history/scenes')
 }
+
+export function redetectTask(taskId) {
+  return request.post(`/history/tasks/${taskId}/redetect`, null, { timeout: 5 * 60 * 1000 })
+}
+
+export function downloadReport(taskId) {
+  return request.get(`/history/tasks/${taskId}/report.md`, { responseType: 'blob' })
+}

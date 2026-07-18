@@ -37,3 +37,11 @@ export function getUserList(params) {
 export function getRoleList() {
   return request.get('/user/roles')
 }
+
+export function setUserRoles(userId, roles) {
+  return request.put(`/user/${userId}/roles`, { roles })
+}
+
+export function setUserStatus(userId, isActive) {
+  return request.put(`/user/${userId}/status`, { is_active: isActive })
+}

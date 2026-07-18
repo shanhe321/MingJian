@@ -80,7 +80,7 @@
               v-else
               type="button"
               class="camera-action-btn is-stop"
-              @click="stopCamera"
+              @click="stopCamera()"
             >
               <span class="action-dot"></span>
               停止摄像头
@@ -223,7 +223,7 @@
       >
         开启摄像头
       </el-button>
-      <el-button v-else type="danger" size="large" @click="stopCamera">
+      <el-button v-else type="danger" size="large" @click="stopCamera()">
         停止检测
       </el-button>
 
@@ -232,8 +232,8 @@
       <!-- GPU/CPU 模式选择 -->
       <span class="control-label">推理模式：</span>
       <el-radio-group v-model="detectMode" :disabled="isRunning">
-        <el-radio-button label="cpu">CPU 节能</el-radio-button>
-        <el-radio-button label="gpu">GPU 加速</el-radio-button>
+        <el-radio-button value="cpu">CPU 节能</el-radio-button>
+        <el-radio-button value="gpu">GPU 加速</el-radio-button>
       </el-radio-group>
 
       <el-divider direction="vertical" />
@@ -265,6 +265,7 @@
  *   - 实时统计：FPS、目标数、推理耗时、类别分布
  */
 import { createCameraWs } from '@/utils/cameraWs'
+import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, ref } from 'vue'
 
@@ -295,6 +296,7 @@ const canvasHeight = ref(480)
 // ── WebSocket 实例 ──
 let cameraWs = null
 let mediaStream = null
+const userStore = useUserStore()
 
 // ── 计算属性 ──
 const statusText = computed(() => {
@@ -328,12 +330,16 @@ async function startCamera() {
     connectionError.value = ''
     isConnecting.value = true
 
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      throw new Error('云端摄像头必须通过 HTTPS 页面访问，请检查站点证书')
+    }
+
     // 1. 获取摄像头权限
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
         width: { ideal: 640 },
         height: { ideal: 480 },
-        facingMode: 'user',
+        facingMode: { ideal: 'environment' },
       },
       audio: false,
     })
@@ -365,6 +371,7 @@ function createCameraWsInstance() {
   cameraWs = createCameraWs({
     mode: detectMode.value,
     conf: confThreshold.value,
+    token: userStore.token,
     onResult: handleDetectionResult,
     onConfigOk: handleConfigOk,
     onError: handleWsError,
@@ -394,11 +401,25 @@ function handleWsError(message) {
   connectionError.value = message || '检测连接异常'
   ElMessage.error(message)
   isConnecting.value = false
+  isRunning.value = false
+  releaseMediaStream()
 }
 
 /** 处理连接关闭 */
 function handleWsClose() {
   isConnecting.value = false
+  if (isRunning.value) {
+    isRunning.value = false
+    releaseMediaStream()
+  }
+}
+
+function releaseMediaStream() {
+  if (mediaStream) {
+    mediaStream.getTracks().forEach((track) => track.stop())
+    mediaStream = null
+  }
+  if (videoRef.value) videoRef.value.srcObject = null
 }
 
 /** 发送单帧 */
@@ -442,7 +463,8 @@ function renderAnnotatedFrame(annotatedBase64) {
 }
 
 /** 停止摄像头 */
-function stopCamera() {
+function stopCamera(notify = true) {
+  const wasActive = isRunning.value || isConnecting.value || Boolean(mediaStream)
   // 关闭 WebSocket
   if (cameraWs) {
     cameraWs.close()
@@ -450,10 +472,7 @@ function stopCamera() {
   }
 
   // 停止摄像头
-  if (mediaStream) {
-    mediaStream.getTracks().forEach((track) => track.stop())
-    mediaStream = null
-  }
+  releaseMediaStream()
 
   // 重置状态
   isRunning.value = false
@@ -470,12 +489,12 @@ function stopCamera() {
     ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
   }
 
-  ElMessage.info('摄像头已停止')
+  if (notify && wasActive) ElMessage.info('摄像头已停止')
 }
 
 // ── 组件销毁时清理 ──
 onBeforeUnmount(() => {
-  stopCamera()
+  stopCamera(false)
 })
 </script>
 

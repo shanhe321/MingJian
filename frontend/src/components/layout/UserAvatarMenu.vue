@@ -51,21 +51,24 @@ const userStore = useUserStore()
 const displayName = computed(() => userStore.username || 'User')
 const userInitial = computed(() => displayName.value.charAt(0).toUpperCase())
 
-function handleCommand(command) {
+async function handleCommand(command) {
   switch (command) {
     case 'profile':
     case 'settings':
       router.push('/settings')
       break
     case 'logout':
-      ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }).then(() => {
-        userStore.logout()
-        router.push('/login')
-      }).catch(() => {})
+      try {
+        await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        })
+        await userStore.secureLogout()
+        await router.push('/login')
+      } catch {
+        // 用户取消退出时保持当前会话。
+      }
       break
   }
 }

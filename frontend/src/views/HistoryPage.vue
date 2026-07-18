@@ -12,6 +12,13 @@
       </el-button>
     </div>
 
+    <el-row :gutter="12" class="summary-row">
+      <el-col :span="6"><el-card shadow="never"><strong>{{ summary.total_tasks || 0 }}</strong><span>累计任务</span></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never"><strong>{{ summary.today_tasks || 0 }}</strong><span>今日任务</span></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never"><strong>{{ summary.status_counts?.completed || 0 }}</strong><span>已完成</span></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never"><strong>{{ summary.status_counts?.failed || 0 }}</strong><span>失败任务</span></el-card></el-col>
+    </el-row>
+
     <!-- ── 筛选栏 ── -->
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="filters" class="filter-form">
@@ -24,6 +31,19 @@
           <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 130px">
             <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="缺陷类别">
+          <el-input v-model="filters.defect_class" placeholder="英文类别名" clearable style="width: 140px" />
+        </el-form-item>
+        <el-form-item label="风险">
+          <el-select v-model="filters.risk_level" placeholder="全部风险" clearable style="width: 120px">
+            <el-option label="低风险" value="low" />
+            <el-option label="中风险" value="medium" />
+            <el-option label="高风险" value="high" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="userStore.isSuperuser" label="用户 ID">
+          <el-input-number v-model="filters.user_id" :min="1" controls-position="right" style="width: 120px" />
         </el-form-item>
         <el-form-item label="场景">
           <el-select v-model="filters.scene_id" placeholder="全部场景" clearable style="width: 160px">
@@ -84,6 +104,19 @@
             {{ row.total_objects || 0 }}
           </template>
         </el-table-column>
+        <el-table-column label="质检" width="110">
+          <template #default="{ row }">
+            {{ row.quality_conclusion || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="风险" width="90">
+          <template #default="{ row }">
+            <el-tag v-if="row.risk_level" size="small" :type="riskTagType(row.risk_level)">
+              {{ riskText(row.risk_level) }}
+            </el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="推理耗时" width="110">
           <template #default="{ row }">
             {{ row.total_inference_time ? `${row.total_inference_time}ms` : '-' }}
@@ -94,10 +127,16 @@
             {{ formatDate(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" text @click="viewDetail(row)">
               <el-icon><View /></el-icon>详情
+            </el-button>
+            <el-button v-if="row.status === 'completed'" size="small" type="success" text @click="handleReport(row)">
+              报告
+            </el-button>
+            <el-button v-if="row.status === 'completed'" size="small" type="warning" text @click="handleRedetect(row)">
+              重检
             </el-button>
             <el-button
               v-if="row.status !== 'processing'"
@@ -155,6 +194,44 @@
           </el-descriptions-item>
         </el-descriptions>
 
+        <el-descriptions v-if="detail.report" :column="1" border class="report-summary">
+          <el-descriptions-item label="质检结论">{{ detail.report.quality_conclusion }}</el-descriptions-item>
+          <el-descriptions-item label="风险等级">{{ riskText(detail.report.risk_level) }}</el-descriptions-item>
+          <el-descriptions-item label="风险原因">{{ detail.report.risk_reason || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="处理建议">{{ detail.report.suggestion || '-' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <div
+          v-if="detail.items?.some((item) => item.input_url || item.result_url) || detail.task?.input_url || detail.task?.result_url"
+          class="report-images"
+        >
+          <h4>检测图像</h4>
+          <div class="report-image-grid">
+            <article
+              v-for="item in (detail.items?.length ? detail.items.slice(0, 20) : [{
+                id: 'task',
+                file_name: '检测输入',
+                input_url: detail.task?.input_url,
+                result_url: detail.task?.result_url,
+              }])"
+              :key="item.id || item.file_name"
+              class="report-image-card"
+            >
+              <strong>{{ item.file_name || '检测图片' }}</strong>
+              <div class="image-pair">
+                <div v-if="item.input_url">
+                  <span>原图</span>
+                  <el-image :src="item.input_url" fit="contain" :preview-src-list="[item.input_url]" preview-teleported />
+                </div>
+                <div v-if="item.result_url">
+                  <span>标注图</span>
+                  <el-image :src="item.result_url" fit="contain" :preview-src-list="[item.result_url]" preview-teleported />
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+
         <!-- 类别分布 -->
         <div class="class-counts" v-if="detail.class_counts && Object.keys(detail.class_counts).length">
           <h4>类别分布</h4>
@@ -207,10 +284,13 @@
  *   - 详情抽屉：任务信息 + 类别分布 + 检测结果列表
  *   - 删除任务（二次确认）
  */
-import { deleteTask, getScenes, getTaskDetail, getTaskList } from '@/api/history'
+import { deleteTask, downloadReport, getHistorySummary, getScenes, getTaskDetail, getTaskList, redetectTask } from '@/api/history'
 import { Delete, Refresh, RefreshLeft, Search, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
+import { useUserStore } from '@/stores/user'
+
+const userStore = useUserStore()
 
 // ── 类型/状态映射（与后端保持一致） ──
 const typeOptions = [
@@ -247,6 +327,14 @@ function statusTagType(value) {
   return statusTagMap[value] || 'info'
 }
 
+function riskText(value) {
+  return { low: '低风险', medium: '中风险', high: '高风险' }[value] || value || '无'
+}
+
+function riskTagType(value) {
+  return { low: 'info', medium: 'warning', high: 'danger' }[value] || 'info'
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return '-'
   return new Date(dateStr).toLocaleString('zh-CN')
@@ -257,12 +345,16 @@ const filters = reactive({
   task_type: '',
   status: '',
   scene_id: '',
+  defect_class: '',
+  risk_level: '',
+  user_id: undefined,
 })
 const dateRange = ref([])
 const scenes = ref([])
 
 // ── 列表数据 ──
 const tableData = ref([])
+const summary = ref({ total_tasks: 0, today_tasks: 0, status_counts: {} })
 const loading = ref(false)
 const pagination = reactive({
   page: 1,
@@ -290,6 +382,9 @@ async function fetchList() {
       task_type: filters.task_type || undefined,
       status: filters.status || undefined,
       scene_id: filters.scene_id || undefined,
+      defect_class: filters.defect_class || undefined,
+      risk_level: filters.risk_level || undefined,
+      user_id: userStore.isSuperuser ? filters.user_id : undefined,
       start_date: dateRange.value?.[0] || undefined,
       end_date: dateRange.value?.[1] || undefined,
     }
@@ -303,6 +398,8 @@ async function fetchList() {
   }
 }
 
+async function fetchSummary() { try { summary.value = await getHistorySummary() } catch {} }
+
 function handleSearch() {
   pagination.page = 1
   fetchList()
@@ -312,6 +409,9 @@ function handleReset() {
   filters.task_type = ''
   filters.status = ''
   filters.scene_id = ''
+  filters.defect_class = ''
+  filters.risk_level = ''
+  filters.user_id = undefined
   dateRange.value = []
   pagination.page = 1
   fetchList()
@@ -355,9 +455,41 @@ async function handleDelete(row) {
   }
 }
 
+async function handleReport(row) {
+  try {
+    const blob = await downloadReport(row.id)
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `detection-report-${row.id}.md`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (err) {
+    console.error('[下载检测报告失败]', err)
+  }
+}
+
+async function handleRedetect(row) {
+  try {
+    await ElMessageBox.confirm(`使用任务 #${row.id} 的原始输入重新检测？`, '重新检测', {
+      type: 'warning',
+      confirmButtonText: '开始重检',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  const result = await redetectTask(row.id)
+  ElMessage.success(`重新检测已完成${result?.task_id ? `，新任务 #${result.task_id}` : ''}`)
+  await fetchList()
+}
+
 onMounted(() => {
   fetchScenes()
   fetchList()
+  fetchSummary()
 })
 </script>
 
@@ -368,6 +500,10 @@ onMounted(() => {
   max-width: $page-max-width;
   margin: 0 auto;
 }
+
+.summary-row { margin-bottom: 16px; }
+.summary-row :deep(.el-card__body) { display:flex; flex-direction:column; gap:4px; }
+.summary-row strong { font-size:24px; color:$text-primary; }
 
 .page-header {
   display: flex;
@@ -464,6 +600,40 @@ onMounted(() => {
   .class-tag {
     margin: 0 8px 8px 0;
   }
+}
+
+.report-summary {
+  margin-top: 20px;
+}
+
+.report-images {
+  margin-top: 20px;
+
+  h4 { margin: 0 0 10px; font-size: 14px; color: $text-primary; }
+}
+
+.report-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.report-image-card {
+  padding: 12px;
+  border: 1px solid $border-color;
+  border-radius: $border-radius-md;
+  background: rgba(248, 251, 255, 0.72);
+
+  > strong { display: block; margin-bottom: 10px; }
+}
+
+.image-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+
+  span { display: block; margin-bottom: 6px; color: $text-secondary; font-size: 12px; }
+  :deep(.el-image) { width: 100%; height: 160px; border-radius: $border-radius-sm; background: #eef2f8; }
 }
 
 .result-list {

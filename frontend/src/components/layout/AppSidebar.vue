@@ -32,13 +32,18 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
+  Box,
   Cpu,
   Clock,
   DataAnalysis,
+  FolderOpened,
+  Setting,
 } from '@element-plus/icons-vue'
 import UserAvatarMenu from './UserAvatarMenu.vue'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
+const userStore = useUserStore()
 
 /** 当前激活的菜单项 */
 const activeMenu = computed(() => {
@@ -46,11 +51,16 @@ const activeMenu = computed(() => {
 })
 
 /** 侧边栏菜单配置 */
-const menuItems = [
+const menuItems = computed(() => [
+  { path: '/datasets', title: '数据集管理', icon: FolderOpened },
   { path: '/training', title: '模型训练', icon: Cpu },
+  { path: '/models', title: '模型版本', icon: Box },
   { path: '/history', title: '历史记录', icon: Clock },
   { path: '/dashboard', title: '数据看板', icon: DataAnalysis },
-]
+  ...(userStore.isSuperuser
+    ? [{ path: '/admin', title: '系统管理', icon: Setting }]
+    : []),
+])
 </script>
 
 <style lang="scss" scoped>

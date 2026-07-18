@@ -67,6 +67,12 @@ const modes = [
     icon: FolderOpened,
   },
   {
+    value: 'folder',
+    label: '文件夹检测',
+    description: '选择图片文件夹并异步检测',
+    icon: FolderOpened,
+  },
+  {
     value: 'video',
     label: '视频检测',
     description: '上传视频并分析采样帧',

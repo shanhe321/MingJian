@@ -7,11 +7,17 @@
         <p>了解检测任务、目标类别和系统运行趋势</p>
       </div>
       <h2>数据看板</h2>
-      <el-radio-group v-model="periodDays" size="default" @change="loadAllData">
-        <el-radio-button :value="7">近 7 天</el-radio-button>
-        <el-radio-button :value="30">近 30 天</el-radio-button>
-        <el-radio-button :value="90">近 90 天</el-radio-button>
-      </el-radio-group>
+      <div>
+        <el-radio-group v-if="userStore.isSuperuser" v-model="scope" @change="loadAllData" style="margin-right: 12px">
+          <el-radio-button value="personal">个人</el-radio-button>
+          <el-radio-button value="global">全局</el-radio-button>
+        </el-radio-group>
+        <el-radio-group v-model="periodDays" size="default" @change="loadAllData">
+          <el-radio-button :value="7">近 7 天</el-radio-button>
+          <el-radio-button :value="30">近 30 天</el-radio-button>
+          <el-radio-button :value="90">近 90 天</el-radio-button>
+        </el-radio-group>
+      </div>
     </div>
 
     <!-- ── 数字统计卡片 ── -->
@@ -22,11 +28,9 @@
             <el-icon :size="28" color="#5b7cfa"><Document /></el-icon>
           </div>
           <div class="stat-info">
-            <div class="stat-value">{{ stats.total_tasks }}</div>
-            <div class="stat-label">检测任务</div>
-            <div class="stat-growth" :class="growthClass('tasks')">
-              {{ formatGrowth(stats.growth?.tasks) }}
-            </div>
+            <div class="stat-value">{{ stats.total_detections }}</div>
+            <div class="stat-label">累计检测任务</div>
+            <div class="stat-growth">今日 {{ stats.today_detections }}</div>
           </div>
         </el-card>
       </el-col>
@@ -36,11 +40,9 @@
             <el-icon :size="28" color="#48b8f7"><PictureFilled /></el-icon>
           </div>
           <div class="stat-info">
-            <div class="stat-value">{{ formatNumber(stats.total_images) }}</div>
-            <div class="stat-label">处理图片</div>
-            <div class="stat-growth" :class="growthClass('images')">
-              {{ formatGrowth(stats.growth?.images) }}
-            </div>
+            <div class="stat-value">{{ formatNumber(stats.total_items) }}</div>
+            <div class="stat-label">累计处理 PCB</div>
+            <div class="stat-growth">今日 {{ stats.today_items }}</div>
           </div>
         </el-card>
       </el-col>
@@ -50,11 +52,9 @@
             <el-icon :size="28" color="#8b5cf6"><Aim /></el-icon>
           </div>
           <div class="stat-info">
-            <div class="stat-value">{{ formatNumber(stats.total_objects) }}</div>
-            <div class="stat-label">检测目标</div>
-            <div class="stat-growth" :class="growthClass('objects')">
-              {{ formatGrowth(stats.growth?.objects) }}
-            </div>
+            <div class="stat-value">{{ formatNumber(stats.defective_pcbs) }}</div>
+            <div class="stat-label">缺陷 PCB</div>
+            <div class="stat-growth">合格 {{ stats.qualified_pcbs }}</div>
           </div>
         </el-card>
       </el-col>
@@ -64,11 +64,9 @@
             <el-icon :size="28" color="#d99018"><Timer /></el-icon>
           </div>
           <div class="stat-info">
-            <div class="stat-value">{{ stats.avg_inference_time }}<span class="unit">ms</span></div>
-            <div class="stat-label">平均耗时</div>
-            <div class="stat-growth" :class="growthClass('inference_time', true)">
-              {{ formatGrowth(stats.growth?.inference_time) }}
-            </div>
+            <div class="stat-value">{{ stats.pass_rate }}<span class="unit">%</span></div>
+            <div class="stat-label">合格率</div>
+            <div class="stat-growth">平均置信度 {{ stats.average_confidence }}</div>
           </div>
         </el-card>
       </el-col>
@@ -102,7 +100,7 @@
 
     <el-row :gutter="16" class="chart-row">
       <!-- 场景分布（柱状图） -->
-      <el-col :span="12">
+      <el-col :span="8">
         <el-card shadow="hover">
           <template #header>
             <span>场景分布</span>
@@ -111,15 +109,31 @@
         </el-card>
       </el-col>
       <!-- 任务类型分布（环形图） -->
-      <el-col :span="12">
+      <el-col :span="8">
         <el-card shadow="hover">
-          <template #header>
-            <span>任务类型分布</span>
-          </template>
+          <template #header><span>风险等级分布</span></template>
+          <div ref="riskChartRef" class="chart-container"></div>
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="hover">
+          <template #header><span>任务类型分布</span></template>
           <div ref="typeChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
     </el-row>
+
+    <el-card shadow="hover">
+      <template #header><span>最近检测记录</span></template>
+      <el-table :data="stats.recent_records || []" size="small">
+        <el-table-column prop="task_id" label="任务" width="80" />
+        <el-table-column prop="task_type" label="类型" />
+        <el-table-column prop="status" label="状态" />
+        <el-table-column prop="quality_conclusion" label="质检结论" />
+        <el-table-column prop="risk_level" label="风险" />
+        <el-table-column prop="created_at" label="创建时间" min-width="180" />
+      </el-table>
+    </el-card>
   </div>
 </template>
 
@@ -134,34 +148,29 @@
  *   - ECharts 柱状图：场景分布
  *   - ECharts 环形图：任务类型分布
  */
-import {
-  getClassDistribution,
-  getSceneDistribution,
-  getStatistics,
-  getTrend,
-  getTypeDistribution,
-} from '@/api/dashboard'
+import { getClassDistribution, getOverview, getSceneDistribution, getStatistics, getTrend, getTypeDistribution } from '@/api/dashboard'
+import { useUserStore } from '@/stores/user'
 import { Aim, Document, PictureFilled, Timer } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 // ── 响应式状态 ──
 const periodDays = ref(30)
+const scope = ref('personal')
+const userStore = useUserStore()
 const loading = ref(false)
 const stats = ref({
-  total_tasks: 0,
-  total_images: 0,
-  total_objects: 0,
-  avg_inference_time: 0,
-  growth: {},
+  total_detections: 0, total_items: 0, defective_pcbs: 0, qualified_pcbs: 0,
+  today_detections: 0, today_items: 0, pass_rate: 0, average_confidence: 0,
+  recent_records: [],
 })
 
 const hasDashboardData = computed(() => {
   return Boolean(
-    stats.value.total_tasks
-    || stats.value.total_images
-    || stats.value.total_objects
-    || stats.value.avg_inference_time
+    stats.value.total_detections
+    || stats.value.total_items
+    || stats.value.defective_pcbs
+    || stats.value.qualified_pcbs
   )
 })
 
@@ -170,12 +179,14 @@ const trendChartRef = ref(null)
 const classChartRef = ref(null)
 const sceneChartRef = ref(null)
 const typeChartRef = ref(null)
+const riskChartRef = ref(null)
 
 // ── 图表实例（用于销毁） ──
 let trendChart = null
 let classChart = null
 let sceneChart = null
 let typeChart = null
+let riskChart = null
 const CHART_THEME = undefined
 
 // ── 格式化函数 ──
@@ -206,20 +217,21 @@ async function loadAllData() {
   const days = periodDays.value
   loading.value = true
   try {
-    // 并行请求所有 API
-    const [statsRes, trendRes, classRes, sceneRes, typeRes] = await Promise.all([
-      getStatistics(days),
-      getTrend(days),
-      getClassDistribution(days),
-      getSceneDistribution(days),
-      getTypeDistribution(days),
+    const [overview, legacyStats, trend, classes, scenes, types] = await Promise.all([
+      getOverview(days, scope.value),
+      getStatistics(days, scope.value),
+      getTrend(days, scope.value),
+      getClassDistribution(days, scope.value),
+      getSceneDistribution(days, scope.value),
+      getTypeDistribution(days, scope.value),
     ])
 
-    stats.value = statsRes
-    renderTrendChart(trendRes.trend)
-    renderClassChart(classRes.distribution)
-    renderSceneChart(sceneRes.distribution)
-    renderTypeChart(typeRes.distribution)
+    stats.value = { ...overview, legacy_statistics: legacyStats }
+    renderTrendChart(trend.trend || overview.trend)
+    renderClassChart(classes.distribution || overview.class_distribution)
+    renderSceneChart(scenes.distribution || overview.scene_distribution)
+    renderRiskChart(overview.risk_distribution)
+    renderTypeChart(types.distribution || [])
   } catch (err) {
     console.error('[看板数据加载失败]', err)
   } finally {
@@ -236,7 +248,7 @@ function renderTrendChart(trend = []) {
 
   const dates = trend.map((d) => d.date.slice(5)) // "MM-DD"
   const taskCounts = trend.map((d) => d.task_count)
-  const objectCounts = trend.map((d) => d.object_count)
+  const objectCounts = trend.map((d) => d.defect_count ?? d.object_count ?? 0)
 
   trendChart.setOption({
     backgroundColor: 'transparent',
@@ -316,7 +328,7 @@ function renderClassChart(distribution = []) {
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'item',
-      formatter: '{b}: {c} ({d}%)',
+      formatter: (params) => `${params.name}: ${params.value} (${params.percent}%)<br/>平均置信度: ${params.data.average_confidence ?? 0}`,
     },
     legend: {
       type: 'scroll',
@@ -398,6 +410,19 @@ function renderSceneChart(distribution = []) {
 }
 
 // ── 渲染环形图：任务类型分布 ──
+function renderRiskChart(distribution = []) {
+  if (!riskChartRef.value) return
+  if (!riskChart) riskChart = echarts.init(riskChartRef.value, CHART_THEME)
+  const labels = { high: '高风险', medium: '中风险', low: '低风险', none: '无风险' }
+  riskChart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { bottom: 0 },
+    color: ['#f56c6c', '#e6a23c', '#409eff', '#67c23a'],
+    series: [{ type: 'pie', radius: ['40%', '65%'], center: ['50%', '45%'], data: distribution.map((item) => ({ ...item, name: labels[item.name] || item.name })), label: { formatter: '{b}\n{d}%' } }],
+  })
+}
+
 function renderTypeChart(distribution = []) {
   if (!typeChartRef.value) return
   if (!typeChart) {
@@ -446,6 +471,7 @@ function handleResize() {
   classChart?.resize()
   sceneChart?.resize()
   typeChart?.resize()
+  riskChart?.resize()
 }
 
 onMounted(() => {
@@ -459,6 +485,7 @@ onBeforeUnmount(() => {
   classChart?.dispose()
   sceneChart?.dispose()
   typeChart?.dispose()
+  riskChart?.dispose()
 })
 </script>
 

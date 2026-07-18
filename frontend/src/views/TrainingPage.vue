@@ -64,11 +64,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="创建时间" width="180" />
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" text @click="selectTask(row)">
               监控
             </el-button>
+            <el-button v-if="['pending', 'running'].includes(row.status)" size="small" type="danger" text @click="stopTask(row)">停止</el-button>
           </template>
         </el-table-column>
 
@@ -130,17 +131,31 @@
       </template>
 
       <el-space wrap>
-        <el-button type="primary" @click="validateModel" :loading="validating">
+        <el-button
+          type="primary"
+          @click="validateModel"
+          :loading="validating || selectedTask.is_evaluating || selectedTask.is_postprocessing"
+          :disabled="selectedTask.is_evaluating || selectedTask.is_postprocessing"
+        >
           评估模型
         </el-button>
         <el-button type="success" @click="showExportDialog = true">
           导出模型
         </el-button>
         <el-button @click="downloadModel">下载权重</el-button>
+        <el-button @click="downloadResults">下载 results.csv</el-button>
         <el-button type="warning" @click="showPredictDialog = true">
           测试验证
         </el-button>
       </el-space>
+      <el-alert
+        v-if="selectedTask.is_postprocessing || selectedTask.is_evaluating"
+        type="info"
+        :closable="false"
+        show-icon
+        title="模型正在自动评估和整理产物，完成后可再次手动评估"
+        style="margin-top: 12px"
+      />
     </el-card>
 
     <!-- ── 评估报告面板 ── -->
@@ -219,9 +234,31 @@
     >
       <el-form :model="trainForm" label-width="120px">
         <el-form-item label="检测场景">
-          <el-select v-model="trainForm.scene_id" placeholder="选择场景">
-            <el-option label="PCB 缺陷检测" :value="1" />
+          <el-select v-model="trainForm.scene_id" placeholder="选择场景" style="width: 100%">
+            <el-option
+              v-for="scene in scenes"
+              :key="scene.id"
+              :label="scene.display_name"
+              :value="scene.id"
+            />
           </el-select>
+        </el-form-item>
+
+        <el-form-item label="训练数据集">
+          <el-select
+            v-model="trainForm.dataset_project_id"
+            placeholder="选择已校验的数据集"
+            clearable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="dataset in availableDatasets"
+              :key="dataset.id"
+              :label="`${dataset.name}（${dataset.total_images} 张）`"
+              :value="dataset.id"
+            />
+          </el-select>
+          <div class="form-hint">仅显示当前场景下状态为 ready 的数据集；不选择时使用兼容目录。</div>
         </el-form-item>
 
         <el-form-item label="基础模型">
@@ -411,16 +448,20 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, UploadFilled, WarningFilled } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import request from '@/utils/request'
+import { getDatasets } from '@/api/datasets'
+import { getScenes } from '@/api/scenes'
 
 // ── 状态变量 ──
 const taskList = ref([])
 const loadingTasks = ref(false)
 const selectedTask = ref(null)
+const datasets = ref([])
+const scenes = ref([])
 const showCreateDialog = ref(false)
 const creating = ref(false)
 
@@ -472,7 +513,8 @@ let pollTimer = null
 
 // ── 训练表单 ──
 const defaultTrainForm = () => ({
-  scene_id: 1,
+  scene_id: null,
+  dataset_project_id: null,
   model_name: 'yolov11n',
   epochs: 50,
   batch_size: 8,
@@ -482,6 +524,24 @@ const defaultTrainForm = () => ({
   lr0: 0.01,
 })
 const trainForm = ref(defaultTrainForm())
+const availableDatasets = computed(() => datasets.value.filter(
+  (dataset) => dataset.status === 'ready' && dataset.scene_id === trainForm.value.scene_id,
+))
+
+watch(() => trainForm.value.scene_id, () => {
+  if (!availableDatasets.value.some((dataset) => dataset.id === trainForm.value.dataset_project_id)) {
+    trainForm.value.dataset_project_id = null
+  }
+})
+
+async function fetchTrainingOptions() {
+  const [sceneRes, datasetRes] = await Promise.all([getScenes(), getDatasets()])
+  scenes.value = sceneRes.items || []
+  datasets.value = datasetRes.items || []
+  if (!trainForm.value.scene_id && scenes.value.length) {
+    trainForm.value.scene_id = scenes.value[0].id
+  }
+}
 
 // ── 计算属性：最新指标卡片 ──
 const metricCards = computed(() => {
@@ -594,6 +654,16 @@ async function fetchTasks() {
   }
 }
 
+async function stopTask(task) {
+  try {
+    await ElMessageBox.confirm(`停止训练任务 ${task.task_uuid?.slice(0, 8)}？`, '确认停止', { type: 'warning' })
+    await request.post(`/training/stop/${task.id}`)
+    ElMessage.success('停止请求已提交')
+    await fetchTasks()
+    if (selectedTask.value?.id === task.id) await fetchStatus()
+  } catch {}
+}
+
 // ── 选择任务并开始监控 ──
 async function selectTask(task) {
   selectedTask.value = task
@@ -628,7 +698,12 @@ async function fetchStatus() {
   try {
     const statusRes = await request.get(`/training/status/${taskId}`)
     if (statusRes?.task) {
-      selectedTask.value = { ...selectedTask.value, ...statusRes.task }
+      selectedTask.value = {
+        ...selectedTask.value,
+        ...statusRes.task,
+        is_evaluating: Boolean(statusRes.is_evaluating),
+        is_postprocessing: Boolean(statusRes.is_postprocessing),
+      }
     }
 
     const metricsRes = await request.get(`/training/metrics/${taskId}`)
@@ -639,7 +714,12 @@ async function fetchStatus() {
     }
 
     // 任务已结束（完成/失败/取消）则停止轮询
-    if (selectedTask.value && !['pending', 'running'].includes(selectedTask.value.status)) {
+    if (
+      selectedTask.value
+      && !['pending', 'running'].includes(selectedTask.value.status)
+      && !selectedTask.value.is_evaluating
+      && !selectedTask.value.is_postprocessing
+    ) {
       stopPolling()
     }
   } catch (e) {
@@ -755,12 +835,17 @@ function stopPolling() {
 // ── 创建训练任务 ──
 // 后端 POST /api/training/start 返回 { id, task_uuid, status, model_name, epochs, message }
 async function createTask() {
+  if (!trainForm.value.scene_id) {
+    ElMessage.warning('请先选择检测场景')
+    return
+  }
   creating.value = true
   try {
     const res = await request.post('/training/start', trainForm.value)
     ElMessage.success(res?.message || `训练任务已创建：${res?.task_uuid?.slice(0, 8) || ''}`)
     showCreateDialog.value = false
-    trainForm.value = defaultTrainForm()
+    const selectedSceneId = trainForm.value.scene_id
+    trainForm.value = { ...defaultTrainForm(), scene_id: selectedSceneId }
     await fetchTasks()
     // 响应体字段较少，从最新任务列表中找到完整任务对象再选中监控
     if (res?.id) {
@@ -778,6 +863,10 @@ async function createTask() {
 // 后端 POST /api/training/validate/{task_id} 会执行 model.val()，CPU 上耗时较长，超时调大到 5 分钟
 async function validateModel() {
   if (!selectedTask.value) return
+  if (selectedTask.value.is_evaluating || selectedTask.value.is_postprocessing) {
+    ElMessage.info('模型正在自动评估，请等待当前任务完成')
+    return
+  }
   validating.value = true
   try {
     const taskId = selectedTask.value.id
@@ -798,10 +887,18 @@ async function validateModel() {
 // ── 导出模型 ──
 async function exportModel() {
   if (!selectedTask.value) return
+  const normalizedVersion = exportForm.value.version.trim()
+  if (normalizedVersion && !/^v?\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(normalizedVersion)) {
+    ElMessage.warning('版本号应为 v1.0.0 或 1.0.0 格式')
+    return
+  }
   exporting.value = true
   try {
     const taskId = selectedTask.value.id
-    const res = await request.post(`/training/export/${taskId}`, exportForm.value)
+    const res = await request.post(`/training/export/${taskId}`, {
+      ...exportForm.value,
+      version: normalizedVersion || null,
+    })
     ElMessage.success(res?.message || '模型导出成功')
     showExportDialog.value = false
   } catch (e) {
@@ -834,6 +931,21 @@ async function downloadModel() {
   } catch (e) {
     ElMessage.error('模型下载失败')
   }
+}
+
+async function downloadResults() {
+  if (!selectedTask.value?.task_uuid) return
+  try {
+    const blob = await request.get(`/training/results/${selectedTask.value.task_uuid}`, { responseType: 'blob' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `results_${selectedTask.value.task_uuid}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  } catch {}
 }
 
 // ── 测试图文件选择 ──
@@ -873,6 +985,7 @@ async function runPredict() {
 
 // ── 生命周期 ──
 onMounted(() => {
+  fetchTrainingOptions().catch((error) => console.error('获取训练选项失败', error))
   fetchTasks()
 })
 
@@ -1028,6 +1141,13 @@ onBeforeUnmount(() => {
 
 .predict-upload {
   width: 100%;
+}
+
+.form-hint {
+  margin-top: 6px;
+  color: $text-secondary;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .predict-upload :deep(.el-upload-dragger) {

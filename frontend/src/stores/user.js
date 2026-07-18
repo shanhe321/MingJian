@@ -3,7 +3,7 @@
  * 管理用户登录信息、Token、角色等
  */
 import { defineStore } from 'pinia'
-import { loginApi, getUserInfoApi } from '@/api/auth'
+import { getUserInfoApi, loginApi, logoutApi } from '@/api/auth'
 
 const TOKEN_KEY = 'rsod_token'
 const USER_KEY = 'rsod_user'
@@ -30,7 +30,7 @@ export const useUserStore = defineStore('user', {
     roles: (state) => state.user?.roles || [],
 
     /** 是否为管理员 */
-    isSuperuser: (state) => state.user?.is_superuser || false,
+    isSuperuser: (state) => state.user?.is_superuser || state.user?.roles?.includes('admin') || false,
   },
 
   actions: {
@@ -68,11 +68,23 @@ export const useUserStore = defineStore('user', {
     /**
      * 退出登录
      */
-    logout() {
+    clearSession() {
       this.token = ''
       this.user = null
       localStorage.removeItem(TOKEN_KEY)
       localStorage.removeItem(USER_KEY)
+    },
+
+    logout() {
+      this.clearSession()
+    },
+
+    async secureLogout() {
+      try {
+        if (this.token) await logoutApi()
+      } finally {
+        this.clearSession()
+      }
     },
   },
 })

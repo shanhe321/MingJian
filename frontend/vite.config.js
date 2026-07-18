@@ -1,11 +1,16 @@
 import vue from "@vitejs/plugin-vue";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  const proxyTarget = env.VITE_DEV_PROXY_TARGET || "http://localhost:8000";
+  const wsProxyTarget = proxyTarget.replace(/^http/, "ws");
+
+  return {
   plugins: [vue()],
   resolve: {
     alias: {
@@ -27,15 +32,15 @@ export default defineConfig({
     port: 5173,
     open: true,
     proxy: {
-      // REST API 代理
-      "/api": {
-        target: "http://localhost:8000",
+      // 更具体的摄像头路径必须位于通用 /api 之前，确保本地开发可升级 WebSocket。
+      "/api/detection/camera": {
+        target: wsProxyTarget,
+        ws: true,
         changeOrigin: true,
       },
-      // WebSocket 代理（摄像头实时检测，必须设置 ws: true）
-      "/api/detection/camera": {
-        target: "ws://localhost:8000",
-        ws: true,
+      // REST API 代理
+      "/api": {
+        target: proxyTarget,
         changeOrigin: true,
       },
     },
@@ -55,4 +60,5 @@ export default defineConfig({
       reporter: ["text", "html"],
     },
   },
+  };
 });

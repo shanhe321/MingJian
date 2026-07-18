@@ -30,6 +30,7 @@ class CameraWs {
     this.conf = options.conf || 0.25
     this.iou = options.iou || 0.45
     this.sceneId = options.sceneId
+    this.token = options.token || ''
 
     this.onResult = options.onResult || (() => {})
     this.onConfigOk = options.onConfigOk || (() => {})
@@ -48,7 +49,11 @@ class CameraWs {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
-    const wsUrl = `${protocol}//${host}/api/detection/camera`
+    if (!this.token) {
+      this.onError('登录状态无效，请重新登录')
+      return
+    }
+    const wsUrl = `${protocol}//${host}/api/detection/camera?token=${encodeURIComponent(this.token)}`
 
     this.ws = new WebSocket(wsUrl)
 
@@ -76,9 +81,10 @@ class CameraWs {
       }
     }
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (event) => {
       this.isConnected = false
       console.log('[CameraWs] 连接已关闭')
+      if (event.code === 1008) this.onError(event.reason || '摄像头连接认证失败')
       this.onClose()
     }
 
@@ -131,6 +137,7 @@ class CameraWs {
     this.conf = config.conf || this.conf
     this.iou = config.iou || this.iou
     this.sceneId = config.sceneId
+    this.token = config.token || this.token
   }
 
   /**

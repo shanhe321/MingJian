@@ -46,6 +46,9 @@ export const useAgentStore = defineStore('agent', {
     /** 添加一条消息 */
     addMessage(message) {
       this.messages.push(message)
+      // 返回 Pinia/Vue 包装后的响应式对象。调用方必须修改该代理，直接修改
+      // push 前的原始对象不会触发逐片渲染。
+      return this.messages[this.messages.length - 1]
     },
 
     /** 更新最后一条 AI 消息（用于流式追加） */

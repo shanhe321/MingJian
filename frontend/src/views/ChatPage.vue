@@ -96,6 +96,18 @@
 
     <!-- ── 输入区域 ── -->
     <div class="input-area">
+      <div class="session-toolbar">
+        <el-select v-model="selectedSessionId" placeholder="历史会话" clearable filterable @change="loadSessionHistory">
+          <el-option
+            v-for="session in agentStore.sessions"
+            :key="session.session_id"
+            :label="session.title || session.session_id"
+            :value="session.session_id"
+          />
+        </el-select>
+        <el-button text @click="loadSessions">刷新会话</el-button>
+        <el-button text @click="startNewSession">新建会话</el-button>
+      </div>
       <!-- 已选文件预览 -->
       <div v-if="selectedFiles.length" class="selected-file-panel">
         <div class="selected-file-main">
@@ -137,6 +149,8 @@
           type="file"
           :accept="currentMode.accept"
           :multiple="currentMode.multiple"
+          :webkitdirectory="detectionMode === 'folder' ? '' : null"
+          :directory="detectionMode === 'folder' ? '' : null"
           style="display: none"
           @change="handleFileSelect"
         />
@@ -203,8 +217,8 @@
  *   - 快捷操作栏（单图/批量/视频/摄像头）+ 清空对话
  *   - 中断当前对话 / 出错后一键重试
  */
-import { detectBatch, detectSingle, detectVideo, detectZip, getVideoStatus } from '@/api/detection'
-import { clearChatSession } from '@/api/chat'
+import { detectBatch, detectSingle, detectVideo, detectZip, getDetectionStatus, getVideoStatus } from '@/api/detection'
+import { clearChatSession, getChatSessionHistory, getChatSessions } from '@/api/chat'
 import ChatWelcome from '@/components/chat/ChatWelcome.vue'
 import DetectionModeSelector from '@/components/chat/DetectionModeSelector.vue'
 import DetectionResultCard from '@/components/DetectionResultCard.vue'
@@ -229,7 +243,7 @@ import {
   VideoCamera,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 // ── Store ──
@@ -243,6 +257,7 @@ const selectedPreviewUrl = ref('')
 const detectionMode = ref('single')
 const messageListRef = ref(null)
 const fileInputRef = ref(null)
+const selectedSessionId = ref(null)
 const isDragging = ref(false)
 let messageIdSeq = 0
 
@@ -260,6 +275,13 @@ const detectionModes = {
     accept: 'image/*,.zip',
     multiple: true,
     placeholder: '上传多张图片或 ZIP 压缩包进行批量检测...',
+  },
+  folder: {
+    label: '文件夹检测',
+    icon: FolderOpened,
+    accept: 'image/*',
+    multiple: true,
+    placeholder: '选择包含 PCB 图片的文件夹进行异步检测...',
   },
   video: {
     label: '视频检测',
@@ -291,7 +313,8 @@ const hasUserMessages = computed(() => {
 
 const fileSummaryTitle = computed(() => {
   if (!selectedFiles.value.length) return ''
-  if (detectionMode.value === 'batch') {
+  if (['batch', 'folder'].includes(detectionMode.value)) {
+    if (detectionMode.value === 'folder') return `${selectedFiles.value.length} 张文件夹图片`
     const hasZip = selectedFiles.value.some((file) => file.name.toLowerCase().endsWith('.zip'))
     return hasZip ? selectedFiles.value[0].name : `${selectedFiles.value.length} 个文件`
   }
@@ -300,7 +323,7 @@ const fileSummaryTitle = computed(() => {
 
 const fileSummaryMeta = computed(() => {
   if (!selectedFiles.value.length) return ''
-  if (detectionMode.value === 'batch' && selectedFiles.value.length > 1) {
+  if (['batch', 'folder'].includes(detectionMode.value) && selectedFiles.value.length > 1) {
     const totalSize = selectedFiles.value.reduce((sum, file) => sum + file.size, 0)
     return `${selectedFiles.value.length} 个文件，${formatFileSize(totalSize)}`
   }
@@ -309,7 +332,7 @@ const fileSummaryMeta = computed(() => {
 })
 
 const fileExtraText = computed(() => {
-  if (detectionMode.value !== 'batch' || selectedFiles.value.length <= 3) return ''
+  if (!['batch', 'folder'].includes(detectionMode.value) || selectedFiles.value.length <= 3) return ''
   return `已选择 ${selectedFiles.value.length} 个文件`
 })
 
@@ -322,6 +345,7 @@ function isValidAttachment(file, mode = detectionMode.value) {
   if (mode === 'batch') {
     return file.type.startsWith('image/') || lowerName.endsWith('.zip')
   }
+  if (mode === 'folder') return file.type.startsWith('image/')
   if (mode === 'video') {
     return ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv'].some((ext) => lowerName.endsWith(ext))
   }
@@ -370,8 +394,7 @@ function scrollToBottom() {
 /** 生成带唯一 id 的消息并加入会话（用于精确定位重试目标，避免依赖“最后一条消息”） */
 function pushMessage(message) {
   const withId = { id: `msg-${Date.now()}-${messageIdSeq++}`, ...message }
-  agentStore.addMessage(withId)
-  return withId
+  return agentStore.addMessage(withId)
 }
 
 /** 工具名称中文映射（沿用 stream.js 中的统一映射） */
@@ -405,7 +428,7 @@ function runChatStream(requestBody, assistantMsg) {
       if (data.type === 'thinking') {
         assistantMsg.statusText = data.content || '正在思考...'
       } else if (data.type === 'tool_start') {
-        assistantMsg.statusText = ''
+        assistantMsg.statusText = `正在调用${getToolName(data.tool)}...`
         assistantMsg.toolCalls.push({ tool: data.tool, status: 'loading', summary: '' })
       } else if (data.type === 'tool_end') {
         const tc = [...assistantMsg.toolCalls].reverse().find((t) => t.tool === data.tool && t.status === 'loading')
@@ -420,6 +443,7 @@ function runChatStream(requestBody, assistantMsg) {
             assistantMsg.hasKnowledge = true
           }
         }
+        assistantMsg.statusText = '正在分析查询结果...'
         scrollToBottom()
       } else if (data.type === 'text_chunk') {
         assistantMsg.statusText = ''
@@ -438,6 +462,7 @@ function runChatStream(requestBody, assistantMsg) {
       assistantMsg.statusText = ''
       agentStore.setLoading(false)
       agentStore.abortController = null
+      loadSessions()
     },
     onError: (err) => {
       assistantMsg.content = assistantMsg.content || `抱歉，处理出错了：${err.message}`
@@ -485,6 +510,8 @@ async function sendMessage() {
       await runSingleDetection(filesToSend[0])
     } else if (detectionMode.value === 'batch') {
       await runBatchDetection(filesToSend)
+    } else if (detectionMode.value === 'folder') {
+      await runFolderDetection(filesToSend)
     } else if (detectionMode.value === 'video') {
       await runVideoDetection(filesToSend[0])
     }
@@ -588,7 +615,40 @@ async function handleNewChat() {
   }
 
   agentStore.newChat()
+  selectedSessionId.value = null
+  await loadSessions()
   ElMessage.success('对话已清空')
+}
+
+function startNewSession() {
+  agentStore.newChat()
+  selectedSessionId.value = null
+}
+
+async function loadSessions() {
+  try {
+    const data = await getChatSessions()
+    agentStore.sessions = data.items || (data.sessions || []).map((sessionId) => ({
+      session_id: sessionId,
+      title: `会话 ${sessionId}`,
+    }))
+  } catch {}
+}
+
+async function loadSessionHistory(sessionId) {
+  if (!sessionId) return
+  try {
+    const data = await getChatSessionHistory(sessionId)
+    agentStore.currentSessionId = sessionId
+    agentStore.messages = (data.messages || []).map((message) => ({
+      id: message.id || `history-${messageIdSeq++}`,
+      role: message.role === 'ai' ? 'assistant' : message.role,
+      content: message.content || '',
+      loading: false,
+      toolCalls: [],
+    }))
+    scrollToBottom()
+  } catch {}
 }
 
 /** 触发文件选择框 */
@@ -605,7 +665,7 @@ function applySelectedFiles(fileList) {
   if (!files.length) return
 
   const mode = detectionMode.value
-  const normalizedFiles = mode === 'batch' ? files : [files[0]]
+  const normalizedFiles = ['batch', 'folder'].includes(mode) ? files : [files[0]]
 
   if (mode === 'batch') {
     const zipFiles = normalizedFiles.filter((file) => file.name.toLowerCase().endsWith('.zip'))
@@ -613,6 +673,10 @@ function applySelectedFiles(fileList) {
       ElMessage.warning('ZIP 检测请只选择一个压缩包，或选择多张图片')
       return
     }
+  }
+  if (mode === 'folder' && normalizedFiles.some((file) => !file.type.startsWith('image/'))) {
+    ElMessage.warning('文件夹检测仅支持图片文件')
+    return
   }
 
   for (const file of normalizedFiles) {
@@ -634,6 +698,7 @@ function applySelectedFiles(fileList) {
 function fileTypeWarning(mode) {
   if (mode === 'single') return '单图检测仅支持图片文件'
   if (mode === 'batch') return '批量检测仅支持图片或单个 ZIP 文件'
+  if (mode === 'folder') return '文件夹检测仅支持图片文件'
   if (mode === 'video') return '视频检测仅支持 mp4、avi、mov、mkv、wmv、flv'
   return '当前模式不需要上传文件'
 }
@@ -643,6 +708,7 @@ function selectionMessage(files, mode) {
     const hasZip = files.some((file) => file.name.toLowerCase().endsWith('.zip'))
     return hasZip ? `${files[0].name} 已选择` : `已选择 ${files.length} 个文件`
   }
+  if (mode === 'folder') return `已选择文件夹中的 ${files.length} 张图片`
   return `${files[0].name} 已选择`
 }
 
@@ -797,6 +863,45 @@ async function runBatchDetection(files) {
   scrollToBottom()
 }
 
+async function runFolderDetection(files) {
+  if (!files?.length) return
+  const formData = new FormData()
+  files.forEach((file) => formData.append('files', file, file.webkitRelativePath || file.name))
+  formData.append('mode', 'folder')
+  formData.append('async_mode', 'true')
+  pushMessage({ role: 'user', content: `[文件夹检测] ${files.length} 张图片` })
+  const assistantMsg = pushMessage({ role: 'assistant', content: '文件夹任务正在提交...', loading: true })
+  try {
+    const task = await detectBatch(formData)
+    await pollFolderProgress(task.task_id, assistantMsg)
+  } catch (err) {
+    assistantMsg.content = `文件夹检测失败：${err.response?.data?.detail || err.message || '请重试'}`
+    assistantMsg.loading = false
+    assistantMsg.error = true
+  }
+}
+
+async function pollFolderProgress(taskId, assistantMsg, maxAttempts = 240) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const status = await getDetectionStatus(taskId)
+    assistantMsg.content = `文件夹检测：${status.processed_items}/${status.total_items}，失败 ${status.failed_items}，进度 ${status.progress}%`
+    if (status.status === 'completed') {
+      assistantMsg.content += '\n检测完成，可在历史记录中查看逐文件结果和报告。'
+      assistantMsg.loading = false
+      return
+    }
+    if (status.status === 'failed') {
+      assistantMsg.content += `\n任务失败：${status.error_message || '未知错误'}`
+      assistantMsg.loading = false
+      assistantMsg.error = true
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+  }
+  assistantMsg.content = '文件夹检测仍在后台执行，请稍后在历史记录中查看。'
+  assistantMsg.loading = false
+}
+
 /**
  * 视频检测流程：
  * 1. 用户点击 "🎬 视频" 按钮
@@ -910,6 +1015,8 @@ async function pollVideoProgress(taskId, assistantMsg, intervalMs = 1500, maxAtt
   assistantMsg.error = true
   scrollToBottom()
 }
+
+onMounted(loadSessions)
 
 onBeforeUnmount(() => {
   clearSelectedFiles()
@@ -1138,6 +1245,15 @@ onBeforeUnmount(() => {
   margin: 0 auto;
   padding: $spacing-sm $spacing-md $spacing-md;
   background: transparent;
+}
+
+.session-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+
+  .el-select { width: 220px; }
 }
 
 .input-row {

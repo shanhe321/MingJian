@@ -18,6 +18,11 @@
 <script setup>
 import AppHeader from './AppHeader.vue'
 import AppSidebar from './AppSidebar.vue'
+import { onMounted } from 'vue'
+import { useUserStore } from '@/stores/user'
+
+const userStore = useUserStore()
+onMounted(() => userStore.fetchUserInfo())
 </script>
 
 <style lang="scss" scoped>
