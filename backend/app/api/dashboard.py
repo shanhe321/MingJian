@@ -27,7 +27,7 @@ def _dashboard_user(current_user, scope: str) -> int | None:
 
 
 @router.get("/overview", summary="需求指标完整看板")
-async def get_overview(
+def get_overview(
     days: int = Query(30, ge=1, le=365),
     scope: str = Query("personal", pattern="^(personal|global)$"),
     current_user=Depends(get_current_user),
@@ -36,7 +36,7 @@ async def get_overview(
 
 
 @router.get("/statistics", summary="汇总统计")
-async def get_statistics(
+def get_statistics(
     days: int = Query(30, ge=1, le=365, description="统计最近 N 天"),
     scope: str = Query("personal", pattern="^(personal|global)$"),
     current_user=Depends(get_current_user),
@@ -46,7 +46,7 @@ async def get_statistics(
 
 
 @router.get("/trend", summary="每日检测趋势")
-async def get_trend(
+def get_trend(
     days: int = Query(30, ge=1, le=365, description="统计最近 N 天"),
     scope: str = Query("personal", pattern="^(personal|global)$"),
     current_user=Depends(get_current_user),
@@ -56,7 +56,7 @@ async def get_trend(
 
 
 @router.get("/class-dist", summary="类别分布统计")
-async def get_class_distribution(
+def get_class_distribution(
     days: int = Query(30, ge=1, le=365),
     scope: str = Query("personal", pattern="^(personal|global)$"),
     current_user=Depends(get_current_user),
@@ -69,7 +69,7 @@ async def get_class_distribution(
 
 
 @router.get("/scene-dist", summary="场景分布统计")
-async def get_scene_distribution(
+def get_scene_distribution(
     days: int = Query(30, ge=1, le=365),
     scope: str = Query("personal", pattern="^(personal|global)$"),
     current_user=Depends(get_current_user),
@@ -82,7 +82,7 @@ async def get_scene_distribution(
 
 
 @router.get("/type-dist", summary="任务类型分布统计")
-async def get_type_distribution(
+def get_type_distribution(
     days: int = Query(30, ge=1, le=365),
     scope: str = Query("personal", pattern="^(personal|global)$"),
     current_user=Depends(get_current_user),

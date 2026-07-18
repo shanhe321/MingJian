@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     MAX_ZIP_UNCOMPRESSED_MB: int = 1024
     TEMP_MAX_AGE_HOURS: int = 24
     CAMERA_DEFECT_KEYFRAME_LIMIT: int = 20
+    REPORT_ARCHIVE_MAX_MEDIA_MB: int = 100
 
     # ── JWT 认证配置 ──────────────────────────────────
     JWT_SECRET_KEY: str = "your-super-secret-key-change-in-production"
@@ -120,6 +121,9 @@ class Settings(BaseSettings):
     QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     QWEN_MODEL: str = "qwen-plus"
     SUPERVISOR_ENABLE_THINKING: bool = False
+    REPORT_AGENT_EXPLANATION_ENABLED: bool = True
+    REPORT_AGENT_ENABLE_THINKING: bool = True
+    REPORT_AGENT_EXPLANATION_TIMEOUT_SECONDS: float = 90.0
 
     # ── 本地 LLM 配置（可选）──────────────────────────
     USE_LOCAL_LLM: bool = False

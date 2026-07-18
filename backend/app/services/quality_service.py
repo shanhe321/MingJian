@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections import Counter
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -23,6 +22,8 @@ from app.entity.db_models import (
     OperationLog,
 )
 from app.storage.minio_client import MinIOClient
+from app.config.settings import settings
+from app.services.report_service import persist_online_report, serialize_detection_task
 
 logger = get_logger(__name__)
 
@@ -42,14 +43,59 @@ def class_name_cn(task: DetectionTask, class_name: str) -> str:
     return mapping.get(class_name) or PCB_CLASS_NAMES_CN.get(class_name) or class_name
 
 
-def evaluate_quality(results: list[DetectionResult]) -> dict:
-    """严格按需求报告给出质检结论；高风险规则优先。"""
+def _is_pcb_scene(task: DetectionTask | None) -> bool:
+    if task is None:
+        return True
+    scene = task.scene
+    if not scene:
+        return False
+    text = " ".join(
+        str(value or "").lower()
+        for value in (scene.name, scene.display_name, scene.category, scene.description)
+    )
+    return any(marker in text for marker in ("pcb", "printed circuit", "电路板"))
+
+
+def _is_multi_image_task(task: DetectionTask | None) -> bool:
+    """Return whether one task may contain multiple boards or multiple views."""
+    return bool(task and getattr(task, "task_type", None) in {"batch", "folder", "zip"})
+
+
+def evaluate_quality(results: list[DetectionResult], task: DetectionTask | None = None) -> dict:
+    """Give deterministic scene-aware conclusions; PCB high-risk rules take priority."""
+    if not _is_pcb_scene(task):
+        if not results:
+            return {
+                "quality_conclusion": "未发现目标",
+                "risk_level": None,
+                "risk_reason": "未检测到达到当前置信度阈值的目标",
+                "suggestion": "建议结合检测场景、图像质量和阈值设置进行复核；关键业务结果不应仅凭自动检测直接放行。",
+            }
+        low_confidence = any(result.confidence < 0.5 for result in results)
+        return {
+            "quality_conclusion": "发现目标，需复核",
+            "risk_level": "low" if low_confidence else "medium",
+            "risk_reason": f"检测到 {len(results)} 个目标" + ("，其中包含低置信度结果" if low_confidence else ""),
+            "suggestion": "请按当前场景的业务规则核对目标类别、位置和置信度，并由人工确认后采取后续措施。",
+        }
+
+    multi_image = _is_multi_image_task(task)
     if not results:
+        if multi_image:
+            return {
+                "quality_conclusion": "多图任务未检出疑似缺陷",
+                "risk_level": None,
+                "risk_reason": "成功处理的图像中未检出达到当前置信度阈值的缺陷候选",
+                "suggestion": (
+                    "当前结论仅适用于图像级自动筛查；建议按批次抽检规则复核后再决定流转，"
+                    "不得将图像无检出率直接解释为 PCB 件数良率。"
+                ),
+            }
         return {
             "quality_conclusion": "合格",
             "risk_level": None,
-            "risk_reason": "未检测到缺陷",
-            "suggestion": "PCB 可判定为合格，建议按正常流程流转。",
+            "risk_reason": "未检出达到当前置信度阈值的缺陷候选",
+            "suggestion": "建议结合原图和业务规则复核后，再决定该图像对应检测对象是否继续流转。",
         }
 
     names = [result.class_name for result in results]
@@ -63,98 +109,56 @@ def evaluate_quality(results: list[DetectionResult]) -> dict:
                 if result.class_name in HIGH_RISK
             }
         )
+        if multi_image:
+            return {
+                "quality_conclusion": "多图任务筛查未通过",
+                "risk_level": "high",
+                "risk_reason": f"一个或多个检测项检出高风险缺陷候选：{', '.join(high)}",
+                "suggestion": (
+                    "隔离命中高风险缺陷候选的对应检测项并逐项人工复核；"
+                    "其他检测项是否流转应按批次质检规则决定，不得据此认定整批 PCB 全部不合格。"
+                ),
+            }
         return {
             "quality_conclusion": "不合格",
             "risk_level": "high",
-            "risk_reason": f"检测到高风险缺陷：{', '.join(high)}",
-            "suggestion": "立即隔离该 PCB，停止流转并安排返修或报废复核。",
+            "risk_reason": f"模型检出高风险缺陷候选：{', '.join(high)}",
+            "suggestion": "建议暂缓该图像对应检测对象流转，人工确认后再决定返修、报废或继续流转。",
         }
-    if "mouse_bite" in names or len(results) > 1:
+    if "mouse_bite" in names or (not multi_image and len(results) > 1):
         return {
-            "quality_conclusion": "疑似缺陷",
+            "quality_conclusion": "多图任务需重点复核" if multi_image else "疑似缺陷",
             "risk_level": "medium",
-            "risk_reason": "检测到鼠咬或多处轻微缺陷",
-            "suggestion": "转人工复检，确认缺陷范围后决定返修或继续流转。",
+            "risk_reason": (
+                "一个或多个检测项检出鼠咬缺陷候选"
+                if multi_image
+                else "模型检出鼠咬或同一图像存在多处轻微缺陷候选"
+            ),
+            "suggestion": (
+                "按检测项逐一人工复核，确认每张图像对应检测对象的缺陷范围后分别处置。"
+                if multi_image
+                else "转人工复检，确认缺陷范围后决定返修或继续流转。"
+            ),
         }
     low_confidence = any(result.confidence < 0.5 for result in results)
     return {
-        "quality_conclusion": "疑似缺陷",
+        "quality_conclusion": "多图任务需人工复核" if multi_image else "疑似缺陷",
         "risk_level": "low",
-        "risk_reason": "检测到毛刺、多余铜或低置信度缺陷" if low_confidence else "检测到轻微缺陷",
-        "suggestion": "建议人工抽检并清理轻微缺陷，保留检测记录。",
+        "risk_reason": (
+            "一个或多个检测项检出毛刺、多余铜或低置信度缺陷候选"
+            if multi_image and low_confidence
+            else "一个或多个检测项检出一般风险缺陷候选"
+            if multi_image
+            else "模型检出毛刺、多余铜或低置信度缺陷候选"
+            if low_confidence
+            else "模型检出轻微缺陷候选"
+        ),
+        "suggestion": (
+            "按检测项人工抽检并分别记录复核结论，不应把文件级检出直接换算为 PCB 件数良率。"
+            if multi_image
+            else "建议人工抽检并清理轻微缺陷，保留检测记录。"
+        ),
     }
-
-
-def _highest_risk_defect(task: DetectionTask) -> str:
-    """返回报告中可读的最高风险缺陷；同级时选择置信度最高者。"""
-    if not task.results:
-        return "无"
-
-    def priority(result: DetectionResult) -> tuple[int, float]:
-        if result.class_name in HIGH_RISK:
-            level = 3
-        elif result.class_name == "mouse_bite":
-            level = 2
-        else:
-            level = 1
-        return level, result.confidence
-
-    result = max(task.results, key=priority)
-    localized = result.class_name_cn or class_name_cn(task, result.class_name)
-    return f"{localized}（置信度 {result.confidence:.2%}）"
-
-
-def _report_markdown(task: DetectionTask, report: DetectionReport) -> str:
-    model = (
-        f"{task.model_version.model_name} / {task.model_version.version}"
-        if task.model_version else "未记录"
-    )
-    items = sorted(task.items, key=lambda item: item.item_index)
-    failed = [item for item in items if item.status == "failed"]
-    lines = [
-        f"# PCB 缺陷检测报告 {report.report_uuid}",
-        "",
-        f"- 检测任务：{task.id}",
-        f"- 检测用户：{task.user.username if task.user else task.user_id}",
-        f"- 开始时间：{task.created_at.isoformat(sep=' ', timespec='seconds') if task.created_at else '未记录'}",
-        f"- 完成时间：{task.completed_at.isoformat(sep=' ', timespec='seconds') if task.completed_at else '未完成'}",
-        f"- 检测模式：{task.task_type}",
-        f"- 模型版本：{model}",
-        f"- 处理数量：{task.total_images or len(items)}",
-        f"- 失败项数：{len(failed)}",
-        f"- 质检结论：{report.quality_conclusion}",
-        f"- 风险等级：{report.risk_level or '无'}",
-        f"- 缺陷总数：{report.defect_count}",
-        f"- 最高风险缺陷：{_highest_risk_defect(task)}",
-        f"- 风险原因：{report.risk_reason}",
-        f"- 处理建议：{report.suggestion}",
-        "",
-        "## 检测文件",
-        "",
-    ]
-    if items:
-        lines.extend(
-            f"- {item.file_name}：{item.status}，缺陷 {item.defect_count or 0} 个"
-            + (f"，失败原因：{item.error_message}" if item.status == "failed" else "")
-            for item in items
-        )
-    elif task.task_type == "camera":
-        lines.append(f"- 浏览器摄像头会话：处理 {task.total_images or 0} 帧")
-    elif task.input_path:
-        lines.append(f"- {Path(task.input_path).name}")
-    else:
-        lines.append("- 未记录可恢复的输入文件")
-    lines.extend(
-        [
-            "",
-            "## 缺陷分布",
-            "",
-            "```json",
-            json.dumps(report.defect_summary or {}, ensure_ascii=False, indent=2),
-            "```",
-        ]
-    )
-    return "\n".join(lines) + "\n"
 
 
 def _upsert_snapshot(
@@ -327,14 +331,15 @@ def finalize_detection_task(
     failed_count = sum(1 for item in items if item.status == "failed")
     completed_count = sum(1 for item in items if item.status == "completed")
     if task.status == "failed" or (failed_count and not completed_count):
+        subject = "PCB" if _is_pcb_scene(task) else "检测对象"
         assessment = {
             "quality_conclusion": "检测失败",
             "risk_level": None,
             "risk_reason": f"{failed_count or task.total_images or 1} 个检测项均未成功处理",
-            "suggestion": "请检查输入文件、模型和存储服务后重新检测，不应据此判定 PCB 合格。",
+            "suggestion": f"请检查输入文件、模型和存储服务后重新检测，不应据此判定 {subject} 合格。",
         }
     else:
-        assessment = evaluate_quality(task.results)
+        assessment = evaluate_quality(task.results, task)
         if failed_count:
             if not task.results:
                 assessment["quality_conclusion"] = "疑似缺陷"
@@ -359,24 +364,21 @@ def finalize_detection_task(
     report.suggestion = assessment["suggestion"]
     db.flush()
 
-    object_name = f"reports/{task.user_id}/{task.id}/{report.report_uuid}.md"
     try:
-        MinIOClient().upload_bytes(
-            object_name,
-            _report_markdown(task, report).encode("utf-8"),
-            "text/markdown; charset=utf-8",
+        client = MinIOClient()
+        detail = serialize_detection_task(task, storage_client=client, report=report)
+        _, object_name, _ = persist_online_report(
+            detail,
+            client,
+            public_base_url=settings.PUBLIC_BASE_URL.strip().rstrip("/"),
         )
         report.report_path = object_name
     except Exception as exc:
         logger.warning("报告上传 MinIO 失败，保留数据库报告: %s", exc)
 
-    for user_id, scene_id in (
-        (task.user_id, task.scene_id),
-        (task.user_id, None),
-        (None, task.scene_id),
-        (None, None),
-    ):
-        _upsert_snapshot(db, task, user_id, scene_id)
+    # Dashboard APIs read current business tables directly. Snapshot refresh is
+    # handled by the startup/hourly maintenance job so detection completion is
+    # not delayed by four full-day aggregate queries.
 
     db.add(
         OperationLog(

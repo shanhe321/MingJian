@@ -393,6 +393,12 @@ class DetectionReport(Base):
     defect_summary = Column(JSONType, nullable=True, comment="缺陷类别统计")
     risk_reason = Column(Text, nullable=True, comment="风险原因")
     suggestion = Column(Text, nullable=True, comment="处理建议")
+    statistics_explanation = Column(Text, nullable=True, comment="结果统计解读")
+    statistics_explanation_source = Column(String(20), nullable=True, comment="统计解读来源：agent/rules")
+    statistics_explanation_generated_at = Column(DateTime, nullable=True, comment="统计解读生成时间")
+    aigc_analysis = Column(JSONType, nullable=True, comment="基于检测证据生成的结构化 AIGC 解读")
+    aigc_analysis_source = Column(String(20), nullable=True, comment="AIGC 解读来源：agent/rules")
+    aigc_analysis_generated_at = Column(DateTime, nullable=True, comment="AIGC 解读生成时间")
     report_path = Column(String(500), nullable=True, comment="报告文件路径")
     created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
 

@@ -27,6 +27,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxrender-dev \
     libgomp1 \
+    # 报告统计图使用中文标题、图例和坐标轴
+    fonts-noto-cjk \
     # 其他运行时依赖
     curl \
     && apt-get clean \

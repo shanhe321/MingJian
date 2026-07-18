@@ -212,6 +212,8 @@ class DetectionService:
         conf: float,
         iou: float,
         model_version_id: int | None = None,
+        image_width: int | None = None,
+        image_height: int | None = None,
     ) -> dict:
         """保存检测任务、检测结果和标注图。"""
         task = DetectionTask(
@@ -278,6 +280,8 @@ class DetectionService:
                 confidence=detection["confidence"],
                 bbox=detection["bbox"],
                 inference_time=inference_time,
+                image_width=image_width,
+                image_height=image_height,
             )
             db.add(result)
 
@@ -350,6 +354,7 @@ class DetectionService:
                     total_objects += 1
 
             annotated_image = result.plot()
+            image_height, image_width = getattr(result, "orig_shape", annotated_image.shape[:2])
             _, buffer = cv2.imencode(
                 ".jpg",
                 annotated_image,
@@ -379,6 +384,8 @@ class DetectionService:
                     conf=conf,
                     iou=iou,
                     model_version_id=model_version.id if model_version else None,
+                    image_width=int(image_width),
+                    image_height=int(image_height),
                 )
                 task_id = save_result["task_id"]
                 annotated_image_url = save_result.get("annotated_image_url")
@@ -508,6 +515,7 @@ class DetectionService:
                     inference_time = float(result.speed.get("inference", 0))
                     total_inference_time += inference_time
                     annotated_image = result.plot()
+                    image_height, image_width = getattr(result, "orig_shape", annotated_image.shape[:2])
                     _, buffer = cv2.imencode(".jpg", annotated_image, [cv2.IMWRITE_JPEG_QUALITY, 85])
                     annotated_images.append({
                         "image_path": filename,
@@ -563,6 +571,8 @@ class DetectionService:
                                 confidence=confidence,
                                 bbox=detection["bbox"],
                                 inference_time=inference_time,
+                                image_width=int(image_width),
+                                image_height=int(image_height),
                             ))
                     total_objects += len(item_detections)
                     item.status = "completed"
@@ -989,6 +999,8 @@ class DetectionService:
                                 confidence=detection["confidence"],
                                 bbox=detection["bbox"],
                                 inference_time=inference_time,
+                                image_width=width,
+                                image_height=height,
                             )
                         )
 
