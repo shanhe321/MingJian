@@ -3,6 +3,11 @@ MinIO 对象存储客户端封装
 用于存储检测图像、训练模型等文件
 """
 import io
+import hashlib
+import hmac
+import time
+from urllib.parse import quote
+
 from minio import Minio
 from minio.error import S3Error
 
@@ -70,18 +75,41 @@ class MinIOClient:
         return self.get_presigned_url(object_name)
 
     def get_presigned_url(self, object_name: str) -> str:
-        """获取对象的预签名访问 URL（有效期 7 天），自动替换为公网地址"""
-        from datetime import timedelta
-        url = self.client.presigned_get_object(
-            bucket_name=self.bucket_name,
-            object_name=object_name,
-            expires=timedelta(days=7),
-        )
-        # 如果配置了公网端点，替换掉内网地址，使浏览器可访问
-        public_endpoint = getattr(settings, 'MINIO_PUBLIC_ENDPOINT', '')
-        if public_endpoint:
-            url = url.replace(settings.MINIO_ENDPOINT, public_endpoint)
-        return url
+        """生成媒体代理 URL；公网基址只读取 PUBLIC_BASE_URL。"""
+        expires = int(time.time()) + settings.STORAGE_URL_EXPIRE_SECONDS
+        signature = self._sign(object_name, expires)
+        base = settings.PUBLIC_BASE_URL.strip().rstrip("/")
+        path = f"/api/storage/objects/{quote(object_name, safe='/')}"
+        return f"{base}{path}?expires={expires}&signature={signature}"
+
+    @staticmethod
+    def _sign(object_name: str, expires: int) -> str:
+        payload = f"{object_name}\n{expires}".encode("utf-8")
+        return hmac.new(
+            settings.JWT_SECRET_KEY.encode("utf-8"), payload, hashlib.sha256
+        ).hexdigest()
+
+    @classmethod
+    def verify_proxy_signature(cls, object_name: str, expires: int, signature: str) -> bool:
+        if expires < int(time.time()):
+            return False
+        return hmac.compare_digest(cls._sign(object_name, expires), signature)
+
+    def object_exists(self, object_name: str) -> bool:
+        try:
+            self.client.stat_object(self.bucket_name, object_name)
+            return True
+        except S3Error:
+            return False
+
+    def stat_object(self, object_name: str):
+        return self.client.stat_object(self.bucket_name, object_name)
+
+    def list_object_names(self, prefix: str) -> set[str]:
+        return {
+            item.object_name
+            for item in self.client.list_objects(self.bucket_name, prefix=prefix, recursive=True)
+        }
 
     def delete_file(self, object_name: str):
         """删除 MinIO 中的文件"""
@@ -89,3 +117,25 @@ class MinIOClient:
             bucket_name=self.bucket_name,
             object_name=object_name,
         )
+
+    def download_bytes(self, object_name: str) -> bytes:
+        """读取对象内容；调用方负责权限校验。"""
+        response = self.client.get_object(self.bucket_name, object_name)
+        try:
+            return response.read()
+        finally:
+            response.close()
+            response.release_conn()
+
+    def download_file(self, object_name: str, file_path: str) -> str:
+        """将对象下载到本地文件，供模型缓存和后台任务恢复使用。"""
+        self.client.fget_object(self.bucket_name, object_name, file_path)
+        return file_path
+
+    def delete_prefix(self, prefix: str) -> int:
+        """删除任务所属前缀下的所有对象。"""
+        count = 0
+        for item in self.client.list_objects(self.bucket_name, prefix=prefix, recursive=True):
+            self.client.remove_object(self.bucket_name, item.object_name)
+            count += 1
+        return count
