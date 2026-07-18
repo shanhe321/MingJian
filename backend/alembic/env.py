@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # 导入 SQLAlchemy 的 Base 类，用于获取模型元数据
 from app.database.session import Base
+from app.config.settings import settings
 
 # 关键：导入所有模型模块，触发模型类的定义和注册
 # 原理：当 Python 执行此 import 时，会执行 db_models.py 中的所有类定义
@@ -39,6 +40,9 @@ from app.entity import db_models
 # 获取 Alembic 配置对象（从 alembic.ini 读取配置）
 config = context.config
 
+# 与应用共用同一套环境变量配置，避免 alembic.ini 中的示例地址误连业务库。
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
+
 # 配置 Python 日志系统（读取 alembic.ini 中的 [loggers] 等配置）
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -46,6 +50,15 @@ if config.config_file_name is not None:
 # 设置迁移目标元数据：告诉 Alembic 从哪里读取模型结构
 # Alembic 通过对比 Base.metadata 和数据库当前状态来生成迁移脚本
 target_metadata = Base.metadata
+
+
+def include_object(object_, name, type_, reflected, compare_to):
+    """RAG 向量表独立管理；NULLS NOT DISTINCT 约束由手写迁移管理。"""
+    if type_ == "table" and name == "knowledge_embeddings":
+        return False
+    if type_ == "unique_constraint" and name == "uq_dashboard_snapshots_dimensions":
+        return False
+    return True
 
 
 def run_migrations_offline() -> None:
@@ -105,6 +118,10 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            include_object=include_object,
+            compare_type=False,
+            compare_server_default=False,
+            compare_comments=False,
         )
 
         # 在事务中执行迁移（确保原子性，失败可回滚）
