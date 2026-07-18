@@ -127,14 +127,37 @@
             {{ formatDate(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="260" fixed="right">
+        <el-table-column label="操作" width="290" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" text @click="viewDetail(row)">
               <el-icon><View /></el-icon>详情
             </el-button>
-            <el-button v-if="row.status === 'completed'" size="small" type="success" text @click="handleReport(row)">
-              报告
-            </el-button>
+            <el-dropdown
+              v-if="row.status === 'completed'"
+              trigger="click"
+              :disabled="reportDownloadingId !== null"
+              @command="(format) => handleReport(row, format)"
+            >
+              <el-button
+                size="small"
+                type="success"
+                text
+                :loading="reportDownloadingId === row.id"
+              >
+                {{ reportDownloadingId === row.id ? '生成中…' : '报告' }}
+                <el-icon v-if="reportDownloadingId !== row.id" class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="markdown">
+                    <el-icon><Document /></el-icon>Markdown 报告
+                  </el-dropdown-item>
+                  <el-dropdown-item command="archive" divided>
+                    <el-icon><Download /></el-icon>离线归档（ZIP）
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <el-button v-if="row.status === 'completed'" size="small" type="warning" text @click="handleRedetect(row)">
               重检
             </el-button>
@@ -284,13 +307,14 @@
  *   - 详情抽屉：任务信息 + 类别分布 + 检测结果列表
  *   - 删除任务（二次确认）
  */
-import { deleteTask, downloadReport, getHistorySummary, getScenes, getTaskDetail, getTaskList, redetectTask } from '@/api/history'
-import { Delete, Refresh, RefreshLeft, Search, View } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { deleteTask, downloadReport, downloadReportArchive, getHistorySummary, getScenes, getTaskDetail, getTaskList, redetectTask } from '@/api/history'
+import { ArrowDown, Delete, Document, Download, Refresh, RefreshLeft, Search, View } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
 import { useUserStore } from '@/stores/user'
 
 const userStore = useUserStore()
+const reportDownloadingId = ref(null)
 
 // ── 类型/状态映射（与后端保持一致） ──
 const typeOptions = [
@@ -455,19 +479,48 @@ async function handleDelete(row) {
   }
 }
 
-async function handleReport(row) {
+function saveBlob(blob, filename) {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
+async function handleReport(row, format = 'markdown') {
+  if (reportDownloadingId.value !== null) {
+    ElMessage.info('已有报告正在生成，请等待当前任务完成')
+    return
+  }
+  const isArchive = format === 'archive'
+  reportDownloadingId.value = row.id
+  const generatingNotice = ElNotification({
+    title: isArchive ? '正在生成离线报告' : '正在生成检测报告',
+    message: 'AIGC Agent 正在分析检测结果并整理图表。首次生成可能需要 1～2 分钟，请保持页面打开并勿重复点击。',
+    type: 'info',
+    duration: 0,
+    showClose: true,
+    position: 'top-right',
+  })
   try {
-    const blob = await downloadReport(row.id)
-    const url = window.URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `detection-report-${row.id}.md`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    window.URL.revokeObjectURL(url)
+    const blob = isArchive
+      ? await downloadReportArchive(row.id)
+      : await downloadReport(row.id)
+    saveBlob(blob, `detection-report-${row.id}.${isArchive ? 'zip' : 'md'}`)
+    ElMessage.success(isArchive ? '离线报告归档已下载' : 'Markdown 报告已下载')
   } catch (err) {
     console.error('[下载检测报告失败]', err)
+    ElNotification.error({
+      title: '报告生成失败',
+      message: '未能完成报告生成，请检查后端服务或稍后重试。',
+      duration: 5000,
+    })
+  } finally {
+    generatingNotice.close()
+    reportDownloadingId.value = null
   }
 }
 
