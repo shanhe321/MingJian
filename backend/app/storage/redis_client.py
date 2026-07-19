@@ -5,7 +5,9 @@ Redis 不可用时自动降级到进程内字典，保证开发环境中的任�
 """
 
 import json
+import threading
 import time
+import uuid
 from typing import Any, Optional
 
 import redis
@@ -28,11 +30,14 @@ class RedisClient:
 
     def _connect(self):
         self._memory_cache = getattr(self, "_memory_cache", {})
+        self._memory_expiry = getattr(self, "_memory_expiry", {})
+        self._memory_lock = getattr(self, "_memory_lock", threading.Lock())
         try:
             self._pool = redis.ConnectionPool(
                 host=settings.REDIS_HOST,
                 port=settings.REDIS_PORT,
-                db=0,
+                password=settings.REDIS_PASSWORD or None,
+                db=settings.REDIS_DB,
                 decode_responses=True,
                 socket_timeout=5,
                 socket_connect_timeout=5,
@@ -67,16 +72,72 @@ class RedisClient:
                     self._use_redis = False
                     return operation()
 
+    def ensure_available(self) -> bool:
+        """确认 Redis 当前可用；生产认证用它避免黑名单失效时静默放行。"""
+        if self._use_redis and self._client:
+            try:
+                return bool(self._client.ping())
+            except RedisError:
+                self._use_redis = False
+        self._connect()
+        return self._use_redis
+
     def set(self, key: str, value: str, expire: Optional[int] = None) -> Any:
         def operation():
             if self._use_redis:
                 return self._client.set(key, value, ex=expire)
             self._memory_cache[key] = value
+            if expire:
+                self._memory_expiry[key] = time.time() + expire
+            else:
+                self._memory_expiry.pop(key, None)
             return True
 
         return self._retry_on_fail(operation)
 
+    def acquire_lock(self, key: str, expire: int = 60) -> str | None:
+        """原子获取带过期时间的分布式锁，成功时返回持有者 token。"""
+        token = uuid.uuid4().hex
+
+        def operation():
+            if self._use_redis:
+                acquired = self._client.set(key, token, nx=True, ex=max(1, int(expire)))
+                return token if acquired else None
+            with self._memory_lock:
+                if self.get(key) is not None:
+                    return None
+                self._memory_cache[key] = token
+                self._memory_expiry[key] = time.time() + max(1, int(expire))
+                return token
+
+        return self._retry_on_fail(operation)
+
+    def release_lock(self, key: str, token: str | None) -> bool:
+        """仅由锁持有者释放，避免过期后误删其他进程新获取的锁。"""
+        if not token:
+            return False
+        if self._use_redis:
+            script = """
+            if redis.call('GET', KEYS[1]) == ARGV[1] then
+                return redis.call('DEL', KEYS[1])
+            end
+            return 0
+            """
+            return bool(
+                self._retry_on_fail(lambda: self._client.eval(script, 1, key, token))
+            )
+        with self._memory_lock:
+            if self.get(key) != token:
+                return False
+            self._memory_cache.pop(key, None)
+            self._memory_expiry.pop(key, None)
+            return True
+
     def get(self, key: str) -> Optional[str]:
+        if not self._use_redis and self._memory_expiry.get(key, float("inf")) <= time.time():
+            self._memory_cache.pop(key, None)
+            self._memory_expiry.pop(key, None)
+            return None
         return self._retry_on_fail(
             lambda: self._client.get(key)
             if self._use_redis
@@ -84,6 +145,7 @@ class RedisClient:
         )
 
     def delete(self, key: str) -> Any:
+        self._memory_expiry.pop(key, None)
         return self._retry_on_fail(
             lambda: self._client.delete(key)
             if self._use_redis
@@ -91,6 +153,8 @@ class RedisClient:
         )
 
     def exists(self, key: str) -> bool:
+        if not self._use_redis:
+            return self.get(key) is not None
         return self._retry_on_fail(
             lambda: bool(self._client.exists(key))
             if self._use_redis
@@ -145,16 +209,38 @@ class RedisClient:
         def operation():
             if self._use_redis:
                 return self._client.lrange(name, start, end)
-            items = self._memory_cache.get(name, [])
+            items = self.get(name) or []
             stop = None if end == -1 else end + 1
             return list(items[start:stop])
 
         return self._retry_on_fail(operation)
 
     def expire(self, name: str, seconds: int) -> Any:
-        return self._retry_on_fail(
-            lambda: self._client.expire(name, seconds) if self._use_redis else True
-        )
+        if not self._use_redis:
+            if name not in self._memory_cache:
+                return False
+            self._memory_expiry[name] = time.time() + seconds
+            return True
+        return self._retry_on_fail(lambda: self._client.expire(name, seconds))
+
+    def increment_with_expiry(self, name: str, seconds: int) -> int:
+        """原子计数，并仅在首次计数时设置窗口 TTL。"""
+        if self._use_redis:
+            script = """
+            local value = redis.call('INCR', KEYS[1])
+            if value == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+            return value
+            """
+            return int(
+                self._retry_on_fail(
+                    lambda: self._client.eval(script, 1, name, int(seconds))
+                )
+            )
+        current = int(self.get(name) or 0) + 1
+        self._memory_cache[name] = current
+        if current == 1:
+            self._memory_expiry[name] = time.time() + seconds
+        return current
 
     def rpop(self, name: str) -> Optional[Any]:
         return self._retry_on_fail(
@@ -198,8 +284,6 @@ class RedisClient:
     def info(self) -> dict:
         return {
             "use_redis": self._use_redis,
-            "redis_host": settings.REDIS_HOST,
-            "redis_port": settings.REDIS_PORT,
             "key_count": len(self.keys()),
             "memory_usage": (
                 self._client.info("memory")

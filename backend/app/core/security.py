@@ -5,6 +5,7 @@
 """
 
 from datetime import datetime, timedelta
+from uuid import uuid4
 
 from jose import jwt
 import bcrypt
@@ -43,7 +44,7 @@ def create_access_token(data: dict) -> str:
     """
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "jti": str(uuid4()), "iat": datetime.utcnow()})
     encoded_jwt = jwt.encode(
         to_encode,
         settings.JWT_SECRET_KEY,

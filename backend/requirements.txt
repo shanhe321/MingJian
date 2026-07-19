@@ -23,6 +23,7 @@ ollama==0.3.0  #本地 LLM 模型备选
 ultralytics==8.3.0   # Ultralytics YOLO框架（包含PyTorch）
 opencv-python==4.8.0.76 # OpenCV图像处理库
 Pillow==10.0.0   # Pillow图像处理库
+matplotlib==3.10.9  # 检测报告统计图生成（显式依赖，避免依赖 Ultralytics 间接安装）
 
 # ── 数据库（PostgreSQL + ORM）─────────────────────────
 sqlalchemy==2.0.0  # SQLAlchemy ORM框架

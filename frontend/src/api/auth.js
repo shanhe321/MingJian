@@ -26,3 +26,8 @@ export function loginApi(data) {
 export function getUserInfoApi() {
   return request.get('/auth/me')
 }
+
+/** 将当前 JWT 加入服务端黑名单。 */
+export function logoutApi() {
+  return request.post('/auth/logout')
+}

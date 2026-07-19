@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import shutil
 import threading
 import uuid
@@ -10,22 +11,39 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
 from app.core.logger import get_logger
 from app.database.session import SessionLocal
 from app.entity.db_models import DetectionScene, ModelVersion, TrainingMetric, TrainingTask
+from app.storage.redis_client import redis_client
 
 logger = get_logger(__name__)
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
+EVALUATION_ARTIFACTS = (
+    "confusion_matrix.png",
+    "PR_curve.png",
+    "F1_curve.png",
+    "results.png",
+    "eval_report.json",
+)
 
 
 class TrainingService:
     def __init__(self) -> None:
         self._running_tasks: dict[int, Any] = {}
         self._tasks_lock = threading.Lock()
+
+    @staticmethod
+    def _evaluation_lock_key(task_id: int) -> str:
+        return f"training:evaluation:{task_id}"
+
+    @staticmethod
+    def _postprocess_key(task_id: int) -> str:
+        return f"training:postprocess:{task_id}"
 
     @staticmethod
     def create_task(
@@ -76,6 +94,90 @@ class TrainingService:
     @classmethod
     def _weights_path(cls, task_uuid: str) -> Path:
         return cls._task_output_dir(task_uuid) / "weights" / "best.pt"
+
+    @staticmethod
+    def _artifact_inventory(directory: Path) -> dict[str, list[str]]:
+        available = [name for name in EVALUATION_ARTIFACTS if (directory / name).is_file()]
+        return {
+            "available": available,
+            "missing": [name for name in EVALUATION_ARTIFACTS if name not in available],
+        }
+
+    @staticmethod
+    def _next_version(db: Session, scene_id: int) -> str:
+        if db.get_bind().dialect.name == "postgresql":
+            # 同一场景的自动版本分配串行化到当前短事务，避免并发 count/select 冲突。
+            db.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_key)"),
+                {"lock_key": 7_310_000 + int(scene_id)},
+            )
+        existing = {
+            row[0] if isinstance(row, tuple) else getattr(row, "version", None)
+            for row in db.query(ModelVersion.version).filter(ModelVersion.scene_id == scene_id).all()
+        }
+        major = 1
+        while f"v{major}.0.0" in existing:
+            major += 1
+        return f"v{major}.0.0"
+
+    @staticmethod
+    def _upload_model_assets(
+        model_version: ModelVersion,
+        weights_path: Path,
+        artifact_dir: Path,
+    ) -> dict:
+        """上传真实存在的权重和评估产物，并明确报告缺失项。"""
+        from app.storage.minio_client import MinIOClient
+
+        client = MinIOClient()
+        object_root = f"models/scene_{model_version.scene_id}/{model_version.version}"
+        weight_object = f"{object_root}/best.pt"
+        client.upload_file(weight_object, str(weights_path))
+        uploaded: dict[str, str] = {}
+        for artifact_name in EVALUATION_ARTIFACTS:
+            artifact = artifact_dir / artifact_name
+            if artifact.is_file():
+                object_name = f"{object_root}/artifacts/{artifact_name}"
+                client.upload_file(object_name, str(artifact))
+                uploaded[artifact_name] = object_name
+        inventory = TrainingService._artifact_inventory(artifact_dir)
+        return {
+            "weight_object": weight_object,
+            "uploaded": uploaded,
+            "missing": inventory["missing"],
+        }
+
+    @classmethod
+    def resolve_model_path(cls, model_version: ModelVersion) -> str | None:
+        """返回可用本地权重；本地丢失时从 MinIO 恢复到持久化缓存。"""
+        model_path = getattr(model_version, "model_path", None)
+        if model_path:
+            configured = cls._absolute_path(model_path)
+            if configured.is_file():
+                return str(configured)
+        minio_url = getattr(model_version, "minio_url", None)
+        if not minio_url:
+            return None
+
+        cache_dir = BACKEND_DIR / "models" / "cache" / f"model_{model_version.id}"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cached = cache_dir / "best.pt"
+        if cached.is_file() and cached.stat().st_size > 0:
+            return str(cached)
+
+        from app.storage.minio_client import MinIOClient
+
+        content = MinIOClient().download_bytes(minio_url)
+        if not content:
+            raise RuntimeError(f"MinIO 模型对象为空: {minio_url}")
+        temporary = cache_dir / f".{cached.name}.{uuid.uuid4().hex}.part"
+        try:
+            temporary.write_bytes(content)
+            os.replace(temporary, cached)
+        finally:
+            temporary.unlink(missing_ok=True)
+        logger.info("模型已从 MinIO 恢复到本地缓存: model_id=%s, path=%s", model_version.id, cached)
+        return str(cached)
 
     @staticmethod
     def _safe_float(value: Any) -> float | None:
@@ -163,7 +265,12 @@ class TrainingService:
             task.error_message = None
             db.commit()
 
-            model = YOLO(self._model_checkpoint(config.get("model_name", "yolov11n")))
+            resume_checkpoint = config.get("resume_checkpoint")
+            model = YOLO(
+                str(resume_checkpoint)
+                if resume_checkpoint
+                else self._model_checkpoint(config.get("model_name", "yolov11n"))
+            )
             with self._tasks_lock:
                 self._running_tasks[task_id] = model
 
@@ -203,10 +310,11 @@ class TrainingService:
                 "exist_ok": True,
                 "plots": True,
                 "verbose": True,
+                "workers": max(0, settings.TRAIN_WORKERS),
             }
             reserved_args = {
                 "data", "epochs", "imgsz", "batch", "device", "optimizer",
-                "lr0", "project", "name", "exist_ok",
+                "lr0", "project", "name", "exist_ok", "plots", "verbose", "workers",
             }
             train_args.update(
                 {
@@ -215,17 +323,53 @@ class TrainingService:
                     if key not in reserved_args
                 }
             )
+            if resume_checkpoint:
+                train_args["resume"] = str(resume_checkpoint)
             model.train(**train_args)
 
             self._parse_final_results(db, task_id, self._task_output_dir(task_uuid) / "results.csv")
             db.refresh(task)
             if task.status != "cancelled":
+                redis_client.set(
+                    self._postprocess_key(task_id),
+                    "1",
+                    expire=settings.EVALUATION_LOCK_TTL_SECONDS,
+                )
                 task.status = "completed"
                 task.current_epoch = task.epochs
                 task.progress = 100
                 task.completed_at = datetime.now()
                 db.commit()
                 logger.info("训练完成: task_id=%d", task_id)
+                # 训练成功和模型后处理是两个独立阶段。评估/MinIO 故障不得把已经
+                # 完成的训练反向标为 failed，但会在状态中留下可见原因，便于重试。
+                try:
+                    try:
+                        finalization = self._finalize_completed_training(db, task_id)
+                    except Exception as exc:
+                        db.rollback()
+                        finalization = {"error": str(exc)}
+                        logger.error(
+                            "训练完成后的模型后处理异常: task_id=%d, error=%s",
+                            task_id,
+                            exc,
+                            exc_info=True,
+                        )
+                finally:
+                    redis_client.delete(self._postprocess_key(task_id))
+                postprocess_issue = finalization.get("error") or finalization.get("warning")
+                if postprocess_issue:
+                    task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
+                    if task is None:
+                        return
+                    task.status = "completed"
+                    task.error_message = f"训练已完成，但模型后处理不完整: {postprocess_issue}"
+                    db.commit()
+                    logger.warning(
+                        "训练完成后的模型后处理不完整: task_id=%d, error=%s",
+                        task_id,
+                        postprocess_issue,
+                    )
         except Exception as exc:
             db.rollback()
             task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
@@ -236,9 +380,34 @@ class TrainingService:
                 db.commit()
             logger.error("训练失败: task_id=%d, error=%s", task_id, exc, exc_info=True)
         finally:
+            redis_client.delete(self._postprocess_key(task_id))
             with self._tasks_lock:
                 self._running_tasks.pop(task_id, None)
             db.close()
+
+    def _finalize_completed_training(self, db: Session, task_id: int) -> dict:
+        """自动评估并发布模型版本；可安全重复调用。"""
+        warnings: list[str] = []
+        evaluation = self.validate_model(
+            db, task_id, split="val", conf=0.001, iou=0.6,
+            allow_postprocess=True,
+        )
+        if evaluation.get("error"):
+            warnings.append(evaluation["error"])
+            logger.warning("自动评估未完成: task_id=%d, error=%s", task_id, evaluation["error"])
+        exported = self.export_model(db, task_id, upload_minio=True)
+        if exported.get("error"):
+            return {"error": exported["error"], "evaluation": evaluation}
+        if exported.get("storage_error"):
+            warnings.append(f"MinIO 上传失败: {exported['storage_error']}")
+        missing = exported.get("artifacts", {}).get("missing", [])
+        if missing:
+            warnings.append(f"缺少真实评估产物: {', '.join(missing)}")
+        return {
+            "evaluation": evaluation,
+            "model": exported,
+            "warning": "; ".join(warnings) if warnings else None,
+        }
 
     @classmethod
     def _upsert_metric(cls, db: Session, task_id: int, epoch: int, values: dict) -> None:
@@ -274,7 +443,8 @@ class TrainingService:
                     "map50_95": cls._safe_float(row.get("metrics/mAP50-95(B)")),
                     "lr": cls._safe_float(row.get("lr/pg0")),
                 }
-                cls._upsert_metric(db, task_id, int(epoch_value) + 1, values)
+                epoch = int(epoch_value)
+                cls._upsert_metric(db, task_id, epoch if epoch >= 1 else 1, values)
         db.commit()
 
     @staticmethod
@@ -305,6 +475,8 @@ class TrainingService:
         )
         with self._tasks_lock:
             is_running = task.id in self._running_tasks
+        is_evaluating = redis_client.exists(self._evaluation_lock_key(task_id))
+        is_postprocessing = redis_client.exists(self._postprocess_key(task_id))
         return {
             "task": {
                 "id": task.id,
@@ -315,9 +487,13 @@ class TrainingService:
                 "current_epoch": task.current_epoch,
                 "progress": task.progress,
                 "device": task.device,
+                "error_message": getattr(task, "error_message", None),
             },
             "latest_metric": self._metric_dict(latest),
             "is_running": is_running,
+            "is_evaluating": is_evaluating,
+            "is_postprocessing": is_postprocessing,
+            "failure_reason": getattr(task, "error_message", None) if task.status == "failed" else None,
         }
 
     @staticmethod
@@ -446,6 +622,7 @@ class TrainingService:
         split: str = "val",
         conf: float = 0.25,
         iou: float = 0.45,
+        allow_postprocess: bool = False,
     ) -> dict:
         """
         对已完成训练的模型执行验证集评估
@@ -459,29 +636,61 @@ class TrainingService:
         """
         from ultralytics import YOLO
 
-        task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
-        if task is None:
-            return {"error": "训练任务不存在"}
-        if task.status != "completed":
-            return {"error": f"训练任务状态为 {task.status}，只有已完成的任务才能评估"}
-
-        weights_path = TrainingService._weights_path(task.task_uuid)
-        if not weights_path.exists():
-            return {"error": f"模型权重不存在: {weights_path}"}
-        data_yaml = Path(task.data_yaml) if task.data_yaml else Path(task.dataset_path or "") / "data.yaml"
-        if not data_yaml.exists():
-            return {"error": "data.yaml 不存在"}
-
-        evaluation_device = task.device or "cpu"
-        logger.info(
-            "开始模型评估: task_id=%d, weights=%s, split=%s, device=%s",
-            task_id,
-            weights_path,
-            split,
-            evaluation_device,
+        if (
+            not allow_postprocess
+            and redis_client.exists(TrainingService._postprocess_key(task_id))
+        ):
+            return {
+                "error": "模型正在执行训练后评估和产物整理，请等待当前后处理完成",
+                "code": "evaluation_in_progress",
+            }
+        lock_key = TrainingService._evaluation_lock_key(task_id)
+        lock_token = redis_client.acquire_lock(
+            lock_key,
+            expire=settings.EVALUATION_LOCK_TTL_SECONDS,
         )
+        if not lock_token:
+            return {
+                "error": "模型正在评估或训练后处理中，请等待当前评估完成",
+                "code": "evaluation_in_progress",
+            }
 
         try:
+            task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
+            if task is None:
+                return {"error": "训练任务不存在"}
+            if task.status != "completed":
+                return {"error": f"训练任务状态为 {task.status}，只有已完成的任务才能评估"}
+
+            model_version = (
+                db.query(ModelVersion).filter(ModelVersion.training_task_id == task_id).first()
+            )
+            weights_path = TrainingService._weights_path(task.task_uuid)
+            if not weights_path.exists() and model_version is not None:
+                try:
+                    restored_path = TrainingService.resolve_model_path(model_version)
+                    weights_path = Path(restored_path) if restored_path else weights_path
+                except Exception as exc:
+                    return {"error": f"模型权重恢复失败: {exc}"}
+            if not weights_path.exists():
+                return {"error": f"模型权重不存在: {weights_path}"}
+            data_yaml = Path(task.data_yaml) if task.data_yaml else Path(task.dataset_path or "") / "data.yaml"
+            if not data_yaml.exists():
+                return {"error": "data.yaml 不存在"}
+
+            evaluation_device = task.device or "cpu"
+            logger.info(
+                "开始模型评估: task_id=%d, weights=%s, split=%s, device=%s",
+                task_id,
+                weights_path,
+                split,
+                evaluation_device,
+            )
+
+            evaluation_output = TrainingService._task_output_dir(task.task_uuid)
+            # 防止重复评估时把上一次遗留的曲线误报为本次真实产物。
+            for artifact_name in ("confusion_matrix.png", "PR_curve.png", "F1_curve.png"):
+                (evaluation_output / artifact_name).unlink(missing_ok=True)
             model = YOLO(str(weights_path))
             results = model.val(
                 data=str(data_yaml),
@@ -496,6 +705,7 @@ class TrainingService:
                 name=f"task_{task.task_uuid}",
                 exist_ok=True,
                 verbose=False,
+                workers=max(0, settings.EVAL_WORKERS),
             )
             overall = {
                 "precision": float(results.box.mp),
@@ -505,25 +715,33 @@ class TrainingService:
             }
             per_class = {}
             if results.box.ap is not None:
-                for index, ap50 in enumerate(results.box.ap50):
-                    class_name = model.names.get(index, f"class_{index}")
+                raw_class_indices = getattr(results.box, "ap_class_index", None)
+                if raw_class_indices is None:
+                    raw_class_indices = getattr(results.box, "ap_class", None)
+                class_indices = (
+                    list(raw_class_indices)
+                    if raw_class_indices is not None
+                    else list(range(len(results.box.ap)))
+                )
+                for offset, ap50 in enumerate(results.box.ap50):
+                    class_id = int(class_indices[offset]) if offset < len(class_indices) else offset
+                    class_name = model.names.get(class_id, f"class_{class_id}")
                     per_class[class_name] = {
                         "ap50": round(float(ap50), 4),
                         "ap50_95": round(
-                            float(results.box.ap[index])
-                            if index < len(results.box.ap)
+                            float(results.box.ap[offset])
+                            if offset < len(results.box.ap)
                             else 0.0,
                             4,
                         ),
                     }
 
-            scene = db.query(DetectionScene).filter(DetectionScene.id == task.scene_id).first()
-            model_version = (
-                db.query(ModelVersion).filter(ModelVersion.training_task_id == task_id).first()
-            )
+            scene_query = db.query(DetectionScene).filter(DetectionScene.id == task.scene_id)
+            if hasattr(scene_query, "with_for_update"):
+                scene_query = scene_query.with_for_update()
+            scene = scene_query.first()
             if model_version is None:
-                count = db.query(ModelVersion).filter(ModelVersion.scene_id == task.scene_id).count()
-                version = f"v{count + 1}.0.0"
+                version = TrainingService._next_version(db, task.scene_id)
                 scene_name = scene.name if scene else f"scene_{task.scene_id}"
                 model_version = ModelVersion(
                     scene_id=task.scene_id,
@@ -543,6 +761,49 @@ class TrainingService:
             model_version.per_class_ap = per_class
             db.commit()
             db.refresh(model_version)
+
+            result_save_dir = getattr(results, "save_dir", None)
+            artifact_dir = Path(result_save_dir or TrainingService._task_output_dir(task.task_uuid))
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            inventory_before_report = TrainingService._artifact_inventory(artifact_dir)
+            report_artifacts = {
+                "available": list(dict.fromkeys(
+                    [*inventory_before_report["available"], "eval_report.json"]
+                )),
+                "missing": [
+                    name for name in inventory_before_report["missing"]
+                    if name != "eval_report.json"
+                ],
+            }
+            report = {
+                "task_id": task_id,
+                "task_uuid": task.task_uuid,
+                "model_version_id": model_version.id,
+                "model_version": model_version.version,
+                "split": split,
+                "overall": overall,
+                "per_class": per_class,
+                "artifacts": report_artifacts,
+                "evaluated_at": datetime.now().isoformat(),
+            }
+            (artifact_dir / "eval_report.json").write_text(
+                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            artifact_status = TrainingService._artifact_inventory(artifact_dir)
+            storage_error = None
+            try:
+                upload = TrainingService._upload_model_assets(
+                    model_version, weights_path, artifact_dir
+                )
+                model_version.minio_url = upload["weight_object"]
+                model_version.model_path = str(weights_path)
+                model_version.file_size = weights_path.stat().st_size
+                db.commit()
+            except Exception as exc:
+                storage_error = str(exc)
+                logger.warning(
+                    "评估产物上传 MinIO 失败: task_id=%d, error=%s", task_id, exc
+                )
             logger.info(
                 "模型评估完成: task_id=%d, mAP50=%.4f, mAP50-95=%.4f",
                 task_id,
@@ -557,10 +818,15 @@ class TrainingService:
                 "per_class": per_class,
                 "model_version_id": model_version.id,
                 "model_version": model_version.version,
+                "artifacts": artifact_status,
+                "storage_error": storage_error,
             }
         except Exception as exc:
+            db.rollback()
             logger.error("模型评估异常: task_id=%d, error=%s", task_id, exc, exc_info=True)
             return {"error": f"评估失败: {exc}"}
+        finally:
+            redis_client.release_lock(lock_key, lock_token)
 
     @staticmethod
     def export_model(
@@ -589,21 +855,28 @@ class TrainingService:
         weights_path = TrainingService._weights_path(task.task_uuid)
         if not weights_path.exists():
             return {"error": f"模型权重不存在: {weights_path}"}
-        scene = db.query(DetectionScene).filter(DetectionScene.id == task.scene_id).first()
+        scene_query = db.query(DetectionScene).filter(DetectionScene.id == task.scene_id)
+        if hasattr(scene_query, "with_for_update"):
+            scene_query = scene_query.with_for_update()
+        scene = scene_query.first()
         if scene is None:
             return {"error": "关联场景不存在"}
 
+        existing = db.query(ModelVersion).filter(ModelVersion.training_task_id == task_id).first()
         if not version:
-            count = db.query(ModelVersion).filter(ModelVersion.scene_id == task.scene_id).count()
-            version = f"v{count + 1}.0.0"
+            version = existing.version if existing is not None else TrainingService._next_version(db, task.scene_id)
+        if not re.fullmatch(r"v?\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", version):
+            return {"error": "模型版本号格式无效"}
 
-        export_dir = BACKEND_DIR / "models" / f"{scene.name}_{version}"
+        export_dir = BACKEND_DIR / "models" / f"scene_{task.scene_id}_{version}"
         export_dir.mkdir(parents=True, exist_ok=True)
         exported_weight = export_dir / "best.pt"
         shutil.copy2(weights_path, exported_weight)
         logger.info("模型文件已复制: %s → %s", weights_path, exported_weight)
 
         task_output = TrainingService._task_output_dir(task.task_uuid)
+        for name in EVALUATION_ARTIFACTS:
+            (export_dir / name).unlink(missing_ok=True)
         for name in ("confusion_matrix.png", "PR_curve.png", "F1_curve.png", "results.png"):
             source = task_output / name
             if source.exists():
@@ -611,7 +884,6 @@ class TrainingService:
 
         overall: dict[str, float | None] = {}
         per_class: dict = {}
-        existing = db.query(ModelVersion).filter(ModelVersion.training_task_id == task_id).first()
         csv_path = task_output / "results.csv"
         if csv_path.exists():
             try:
@@ -653,6 +925,16 @@ class TrainingService:
                 existing.map50 or 0,
             )
 
+        report_inventory = TrainingService._artifact_inventory(export_dir)
+        report_artifacts = {
+            "available": list(dict.fromkeys(
+                [*report_inventory["available"], "eval_report.json"]
+            )),
+            "missing": [
+                name for name in report_inventory["missing"]
+                if name != "eval_report.json"
+            ],
+        }
         report = {
             "version": version,
             "model_name": task.model_name,
@@ -667,22 +949,35 @@ class TrainingService:
                 "lr0": task.lr0,
                 "device": task.device,
             },
+            "artifacts": report_artifacts,
             "exported_at": datetime.now().isoformat(),
         }
         (export_dir / "eval_report.json").write_text(
             json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
-        minio_url = None
+        artifact_status = TrainingService._artifact_inventory(export_dir)
+        minio_url = existing.minio_url if existing is not None else None
+        storage_error = None
         if upload_minio:
             try:
                 from app.storage.minio_client import MinIOClient
 
-                minio_url = MinIOClient().upload_file(
-                    f"models/{scene.name}/{version}/best.pt", str(exported_weight)
-                )
-                logger.info("模型已上传 MinIO: %s", minio_url)
+                client = MinIOClient()
+                object_root = f"models/scene_{task.scene_id}/{version}"
+                weight_object = f"{object_root}/best.pt"
+                client.upload_file(weight_object, str(exported_weight))
+                for artifact_name in (
+                    "confusion_matrix.png", "PR_curve.png", "F1_curve.png",
+                    "results.png", "eval_report.json",
+                ):
+                    artifact = export_dir / artifact_name
+                    if artifact.exists():
+                        client.upload_file(f"{object_root}/artifacts/{artifact_name}", str(artifact))
+                minio_url = weight_object
+                logger.info("模型及评估产物已上传 MinIO: %s", object_root)
             except Exception as exc:
+                storage_error = str(exc)
                 logger.warning("MinIO 上传失败（不影响本地导出）: %s", exc)
 
         model_version = existing
@@ -697,8 +992,10 @@ class TrainingService:
             )
             db.add(model_version)
         model_version.version = version
+        model_version.model_name = f"{task.model_name}_{scene.name}_{version}"
         model_version.model_path = str(exported_weight)
-        model_version.minio_url = minio_url
+        if minio_url:
+            model_version.minio_url = minio_url
         model_version.map50 = overall.get("map50")
         model_version.map50_95 = overall.get("map50_95")
         model_version.precision = overall.get("precision")
@@ -737,6 +1034,8 @@ class TrainingService:
                 "recall": overall.get("recall"),
                 "per_class": per_class,
             },
+            "artifacts": artifact_status,
+            "storage_error": storage_error,
             "is_default": bool(model_version.is_default),
             "message": f"模型已导出为版本 {version}",
         }
@@ -765,6 +1064,24 @@ class TrainingService:
                 "file_size": last_path.stat().st_size,
             }
 
+        model_version = (
+            db.query(ModelVersion)
+            .filter(ModelVersion.training_task_id == task_id)
+            .first()
+        )
+        if model_version is not None:
+            try:
+                restored = TrainingService.resolve_model_path(model_version)
+            except Exception as exc:
+                return {"error": f"模型权重恢复失败: {exc}"}
+            if restored:
+                restored_path = Path(restored)
+                return {
+                    "file_path": str(restored_path),
+                    "filename": f"best_{task.task_uuid}.pt",
+                    "file_size": restored_path.stat().st_size,
+                }
+
         return {"error": "模型权重文件不存在"}
 
     @staticmethod
@@ -774,7 +1091,59 @@ class TrainingService:
         if not task:
             return None
         weights_path = TrainingService._weights_path(task.task_uuid)
-        return str(weights_path) if weights_path.exists() else None
+        if weights_path.exists():
+            return str(weights_path)
+        model_version = (
+            db.query(ModelVersion)
+            .filter(ModelVersion.training_task_id == task_id)
+            .first()
+        )
+        return TrainingService.resolve_model_path(model_version) if model_version else None
+
+    def recover_incomplete_tasks(self) -> int:
+        """应用启动时恢复 pending/running 训练；存在 last.pt 时从检查点续训。"""
+        db = SessionLocal()
+        recoverable: list[tuple[int, str, dict]] = []
+        try:
+            tasks = db.query(TrainingTask).filter(
+                TrainingTask.status.in_(("pending", "running"))
+            ).all()
+            for task in tasks:
+                if not task.data_yaml or not Path(task.data_yaml).exists():
+                    task.status = "failed"
+                    task.error_message = "服务重启后无法恢复：训练数据配置不存在"
+                    task.completed_at = datetime.now()
+                    continue
+                config = {
+                    "model_name": task.model_name,
+                    "epochs": task.epochs,
+                    "img_size": task.img_size,
+                    "batch_size": task.batch_size,
+                    "device": task.device,
+                    "optimizer": task.optimizer,
+                    "lr0": task.lr0,
+                    "augment_config": task.augment_config or {},
+                    "dataset_path": task.dataset_path,
+                    "data_yaml": task.data_yaml,
+                    "dataset_project_id": task.dataset_project_id,
+                }
+                checkpoint = self._task_output_dir(task.task_uuid) / "weights" / "last.pt"
+                if checkpoint.exists():
+                    config["resume_checkpoint"] = str(checkpoint)
+                task.status = "pending"
+                task.error_message = "服务重启后自动恢复训练"
+                recoverable.append((task.id, task.task_uuid, config))
+            db.commit()
+        finally:
+            db.close()
+        for task_id, task_uuid, config in recoverable:
+            threading.Thread(
+                target=self._run_training,
+                args=(task_id, task_uuid, config),
+                daemon=True,
+                name=f"train-recover-{task_uuid}",
+            ).start()
+        return len(recoverable)
 
 
 training_service = TrainingService()

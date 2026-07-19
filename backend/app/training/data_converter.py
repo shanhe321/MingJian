@@ -86,7 +86,7 @@ class DataConverter:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         stats = {"total": 0, "converted": 0, "skipped": 0, "errors": []}
-        xml_files = sorted(xml_dir.glob("*.xml"))
+        xml_files = sorted(xml_dir.rglob("*.xml"))
 
         for xml_file in xml_files:
             if include_ids is not None and xml_file.stem not in include_ids:
@@ -141,8 +141,11 @@ class DataConverter:
             grouped[Path(image["file_name"]).stem].append(line)
             stats["converted"] += 1
 
-        for stem, lines in grouped.items():
-            (output_dir / f"{stem}.txt").write_text("\n".join(lines), encoding="utf-8")
+        for image in images.values():
+            stem = Path(image["file_name"]).stem
+            (output_dir / f"{stem}.txt").write_text(
+                "\n".join(grouped.get(stem, [])), encoding="utf-8"
+            )
 
         return stats
 
@@ -158,7 +161,7 @@ class DataConverter:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         stats = {"total": 0, "converted": 0, "skipped": 0, "errors": []}
-        for json_file in sorted(json_dir.glob("*.json")):
+        for json_file in sorted(json_dir.rglob("*.json")):
             stats["total"] += 1
             try:
                 data = json.loads(json_file.read_text(encoding="utf-8"))

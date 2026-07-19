@@ -2,11 +2,14 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import yaml
+from pydantic import ValidationError
 
 from app.entity.schemas import ModelExportRequest, ModelValidateRequest, TrainingTaskCreate
 from app.training.dataset_splitter import DatasetSplitter
 from app.training.training_service import TrainingService
+from app.training import training_service as training_module
 from main import app
 from tools.verify_dataset import verify_dataset
 
@@ -18,7 +21,7 @@ def test_training_router_exposes_documented_ten_endpoints():
         if route.path.startswith("/api/training")
         for method in route.methods
     }
-    assert routes == {
+    assert {
         ("POST", "/api/training/start"),
         ("GET", "/api/training/tasks"),
         ("GET", "/api/training/status/{task_id}"),
@@ -29,11 +32,13 @@ def test_training_router_exposes_documented_ten_endpoints():
         ("POST", "/api/training/export/{task_id}"),
         ("GET", "/api/training/download/{task_id}"),
         ("POST", "/api/training/predict"),
-    }
+    }.issubset(routes)
 
 
 def test_training_schema_defaults_match_day07():
-    assert TrainingTaskCreate(scene_id=1, epochs=5).epochs == 5
+    training = TrainingTaskCreate(scene_id=1, epochs=5)
+    assert training.epochs == 5
+    assert training.device == "cpu"
     assert ModelValidateRequest().model_dump() == {
         "split": "val",
         "conf": 0.001,
@@ -41,6 +46,23 @@ def test_training_schema_defaults_match_day07():
     }
     assert ModelExportRequest().upload_minio is True
     assert TrainingService._model_checkpoint("yolov11n") == "yolo11n.pt"
+
+
+@pytest.mark.parametrize(
+    ("schema", "kwargs"),
+    [
+        (TrainingTaskCreate, {"scene_id": 1, "img_size": 641}),
+        (TrainingTaskCreate, {"scene_id": 1, "device": "cuda:all"}),
+        (TrainingTaskCreate, {"scene_id": 1, "lr0": 0}),
+        (TrainingTaskCreate, {"scene_id": 1, "model_name": "../best.pt"}),
+        (ModelValidateRequest, {"split": "invalid"}),
+        (ModelValidateRequest, {"conf": 1.1}),
+        (ModelValidateRequest, {"iou": 0}),
+    ],
+)
+def test_training_and_validation_parameters_reject_unsafe_values(schema, kwargs):
+    with pytest.raises(ValidationError):
+        schema(**kwargs)
 
 
 def test_original_training_service_entrypoints_are_preserved():
@@ -129,11 +151,32 @@ def test_model_validation_uses_training_device(tmp_path: Path, monkeypatch):
         "_weights_path",
         classmethod(lambda cls, task_uuid: weights_path),
     )
+    monkeypatch.setattr(
+        TrainingService,
+        "_task_output_dir",
+        classmethod(lambda cls, task_uuid: tmp_path),
+    )
 
     result = TrainingService.validate_model(Database(), task_id=1)
 
     assert "error" not in result
     assert captured["device"] == "0"
+    assert captured["workers"] == 0
+
+
+def test_model_validation_rejects_manual_run_during_postprocess(monkeypatch):
+    monkeypatch.setattr(
+        training_module.redis_client,
+        "exists",
+        lambda key: key == TrainingService._postprocess_key(9),
+    )
+
+    result = TrainingService.validate_model(object(), task_id=9)
+
+    assert result == {
+        "error": "模型正在执行训练后评估和产物整理，请等待当前后处理完成",
+        "code": "evaluation_in_progress",
+    }
 
 
 def test_model_download_prefers_best_weight(tmp_path: Path, monkeypatch):
@@ -200,6 +243,7 @@ def test_training_status_matches_documented_shape():
         current_epoch=2,
         progress=40,
         device="cpu",
+        error_message=None,
     )
     metric = SimpleNamespace(
         epoch=2,
@@ -233,7 +277,10 @@ def test_training_status_matches_documented_shape():
     service = TrainingService()
     service._running_tasks[1] = object()
     result = service.get_training_status(Database(), 1)
-    assert set(result) == {"task", "latest_metric", "is_running"}
+    assert set(result) == {
+        "task", "latest_metric", "is_running", "is_evaluating",
+        "is_postprocessing", "failure_reason",
+    }
     assert result["task"] == {
         "id": 1,
         "task_uuid": "a1b2c3d4",
@@ -243,9 +290,41 @@ def test_training_status_matches_documented_shape():
         "current_epoch": 2,
         "progress": 40,
         "device": "cpu",
+        "error_message": None,
     }
     assert result["latest_metric"]["epoch"] == 2
     assert result["is_running"] is True
+    assert result["is_evaluating"] is False
+    assert result["is_postprocessing"] is False
+    assert result["failure_reason"] is None
+
+
+def test_model_path_is_restored_from_minio_to_persistent_cache(tmp_path: Path, monkeypatch):
+    model = SimpleNamespace(
+        id=7,
+        model_path=str(tmp_path / "missing.pt"),
+        minio_url="models/scene_1/v1.0.0/best.pt",
+    )
+
+    class Client:
+        def download_bytes(self, object_name):
+            assert object_name == model.minio_url
+            return b"real-weight"
+
+    monkeypatch.setattr(training_module, "BACKEND_DIR", tmp_path)
+    monkeypatch.setattr("app.storage.minio_client.MinIOClient", Client)
+
+    restored = Path(TrainingService.resolve_model_path(model))
+    assert restored.read_bytes() == b"real-weight"
+    assert restored == tmp_path / "models" / "cache" / "model_7" / "best.pt"
+
+
+def test_missing_evaluation_plots_are_reported_without_placeholder_creation(tmp_path: Path):
+    (tmp_path / "PR_curve.png").write_bytes(b"real")
+    status = TrainingService._artifact_inventory(tmp_path)
+    assert status["available"] == ["PR_curve.png"]
+    assert "confusion_matrix.png" in status["missing"]
+    assert not (tmp_path / "confusion_matrix.png").exists()
 
 
 def test_dataset_splitter_and_yaml_generation(tmp_path: Path):

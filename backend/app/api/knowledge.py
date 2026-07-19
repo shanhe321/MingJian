@@ -1,26 +1,33 @@
 """知识库索引构建、统计和手动检索 API。"""
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
-from app.api.auth import get_current_user
+from app.api.auth import get_current_user, require_admin
 from app.rag.retriever import knowledge_retriever
 
 router = APIRouter(prefix="/api/knowledge", tags=["知识库管理"])
 
 
 class SearchRequest(BaseModel):
-    query: str
-    top_k: int = 3
+    query: str = Field(min_length=1, max_length=500)
+    top_k: int = Field(default=3, ge=1, le=20)
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("检索内容不能为空")
+        return normalized
 
 
 @router.post("/build", summary="构建知识库索引")
 async def build_index(
     force_rebuild: bool = False,
-    current_user=Depends(get_current_user),
+    _admin=Depends(require_admin),
 ):
     """构建或重建三份领域文档的 Pgvector 索引。"""
-    del current_user
     stats = knowledge_retriever.build_index(force_rebuild=force_rebuild)
     return {"message": "知识库索引构建完成", "stats": stats}
 

@@ -16,7 +16,7 @@
  *     { message: '你好', session_id: 'abc123' },
  *     {
  *       onMessage: (event) => { ... 根据 event.type 分发处理 ... },
- *       onDone: () => { console.log('完成') },
+ *       onDone: () => {},
  *       onError: (err) => { console.error(err) },
  *     }
  *   )

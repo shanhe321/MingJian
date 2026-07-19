@@ -13,11 +13,18 @@ import router from '@/router'
 const request = axios.create({
   baseURL: '/api',          // 配合 Vite proxy，实际请求转发到后端
   timeout: 30000,           // 请求超时 30 秒
+  headers: { 'Content-Type': 'application/json' },
 })
 
 // ── 请求拦截器 ──────────────────────────────────────
 request.interceptors.request.use(
   (config) => {
+    // FormData 必须由浏览器生成 multipart boundary。Axios 实例的 JSON
+    // 默认头若保留下来，FastAPI Form(...) 将无法读取任何字段。
+    if (config.data instanceof FormData) {
+      config.headers.delete('Content-Type')
+    }
+
     // 从 Pinia store 获取 Token，自动注入请求头
     const userStore = useUserStore()
     if (userStore.token) {
@@ -45,7 +52,7 @@ request.interceptors.response.use(
           // Token 过期或无效，清除用户信息并跳转登录页
           ElMessage.error('登录已过期，请重新登录')
           const userStore = useUserStore()
-          userStore.logout()
+          userStore.clearSession()
           router.push('/login')
           break
 

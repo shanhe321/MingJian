@@ -101,5 +101,4 @@ export function setupErrorReporting(app) {
     event.preventDefault();
   };
 
-  console.log("[ErrorReporter] 全局错误监控已启用");
 }

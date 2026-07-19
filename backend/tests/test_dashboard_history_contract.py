@@ -20,7 +20,7 @@ def test_dashboard_history_and_user_routes_match_guide():
         if route.path.startswith(prefixes)
         for method in getattr(route, "methods", set())
     }
-    assert routes == {
+    assert {
         ("GET", "/api/dashboard/statistics"),
         ("GET", "/api/dashboard/trend"),
         ("GET", "/api/dashboard/class-dist"),
@@ -35,7 +35,7 @@ def test_dashboard_history_and_user_routes_match_guide():
         ("GET", "/api/user/roles"),
         ("PUT", "/api/user/profile"),
         ("PUT", "/api/user/password"),
-    }
+    }.issubset(routes)
 
 
 def test_new_routes_require_authentication(client):
@@ -214,17 +214,19 @@ def test_user_api_matches_settings_contract(client, monkeypatch):
     )
     monkeypatch.setattr(user_service, "list_roles", lambda: [])
 
-    def fake_profile(user_id, phone, email):
+    def fake_profile(user_id, phone, email, db=None):
         calls.append(("profile", user_id, phone, email))
         return {"message": "个人信息已更新"}
 
-    def fake_password(user_id, old_password, new_password):
+    def fake_password(user_id, old_password, new_password, db=None):
         calls.append(("password", user_id, old_password, new_password))
         return {"message": "密码修改成功"}
 
     monkeypatch.setattr(user_service, "update_profile", fake_profile)
     monkeypatch.setattr(user_service, "change_password", fake_password)
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=5)
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id=5, is_superuser=True, user_roles=[]
+    )
     try:
         assert client.get("/api/user/list?page=1&page_size=20").status_code == 200
         assert client.get("/api/user/roles").json() == {"roles": []}

@@ -12,7 +12,7 @@ class AgentState(TypedDict, total=False):
     next_agent: str
     detection_result: dict[str, Any]
     analysis_result: dict[str, Any]
-    qa_result: str
+    management_result: dict[str, Any]
     tool_events: list[dict[str, Any]]
     agent_used: str
     final_response: str

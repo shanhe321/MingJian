@@ -1,15 +1,11 @@
 <template>
   <div class="settings-page">
-    <div class="page-title-copy">
-      <h2>系统设置</h2>
-      <p>管理个人资料、账户安全和平台信息</p>
-    </div>
-    <h2>系统设置</h2>
+    <PageHeader title="系统设置" description="管理个人资料、账户安全和平台信息。" eyebrow="Preferences" />
 
     <el-row :gutter="24">
       <!-- 个人信息 -->
       <el-col :span="12">
-        <el-card shadow="hover">
+        <el-card shadow="never">
           <template #header>
             <span>个人信息</span>
           </template>
@@ -38,7 +34,7 @@
 
       <!-- 修改密码 -->
       <el-col :span="12">
-        <el-card shadow="hover">
+        <el-card shadow="never">
           <template #header>
             <span>修改密码</span>
           </template>
@@ -85,7 +81,7 @@
     </el-row>
 
     <!-- 关于系统 -->
-    <el-card shadow="hover" class="about-card">
+    <el-card shadow="never" class="about-card">
       <template #header>
         <span>关于系统</span>
       </template>
@@ -98,6 +94,12 @@
         <el-descriptions-item label="数据库">PostgreSQL + Redis + MinIO</el-descriptions-item>
       </el-descriptions>
     </el-card>
+
+    <template v-if="userStore.isSuperuser">
+      <div class="admin-section-title"><span>管理员设置</span><p>以下操作仅对管理员开放，并由后端执行权限校验与审计。</p></div>
+      <SceneSettingsPanel />
+      <SystemMaintenancePanel />
+    </template>
   </div>
 </template>
 
@@ -113,6 +115,9 @@
 import { getUserInfoApi } from '@/api/auth'
 import { changePassword, updateProfile } from '@/api/user'
 import { useUserStore } from '@/stores/user'
+import SceneSettingsPanel from '@/components/settings/SceneSettingsPanel.vue'
+import SystemMaintenancePanel from '@/components/settings/SystemMaintenancePanel.vue'
+import PageHeader from '@/components/common/PageHeader.vue'
 import { ElMessage } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
 
@@ -333,4 +338,9 @@ onMounted(() => {
     border-radius: $border-radius-md;
   }
 }
+
+.admin-section-title { margin: $spacing-xl 0 $spacing-md; }
+.admin-section-title span { color: $text-primary; font-size: 18px; font-weight: 680; }
+.admin-section-title p { margin: 5px 0 0; color: $text-secondary; font-size: 13px; }
+.admin-section-title + :deep(.el-card) { margin-bottom: $spacing-md; }
 </style>

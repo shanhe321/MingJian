@@ -9,9 +9,9 @@ Pydantic 请求/响应模型
   - List 模型：分页列表查询的参数和响应
 """
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class _ModelFieldsBase(BaseModel):
@@ -128,6 +128,17 @@ class PermissionResponse(BaseModel):
         from_attributes = True
 
 
+class RoleAssignmentRequest(BaseModel):
+    """管理员覆盖设置用户角色；只允许需求定义的 user/admin。"""
+    roles: list[str] = Field(..., min_length=1)
+
+
+class UserStatusRequest(BaseModel):
+    """管理员启用或停用用户。"""
+
+    is_active: bool
+
+
 # ══════════════════════════════════════════════════════════════
 # 二、检测业务
 # ══════════════════════════════════════════════════════════════
@@ -142,6 +153,16 @@ class SceneCreate(BaseModel):
     category: str = Field(..., description="分类：agriculture/industry/remote_sensing/medical/traffic")
     class_names: list[str] = Field(..., description="类别列表")
     class_names_cn: Optional[dict[str, str]] = Field(None, description="中文名映射")
+
+
+class SceneUpdate(BaseModel):
+    """管理员修改检测场景；未提供的字段保持不变。"""
+    display_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    category: Optional[str] = Field(None, min_length=1, max_length=50)
+    class_names: Optional[list[str]] = None
+    class_names_cn: Optional[dict[str, str]] = None
+    is_active: Optional[bool] = None
 
 
 class SceneResponse(BaseModel):
@@ -183,6 +204,8 @@ class DatasetProjectResponse(BaseModel):
     val_images: int
     test_images: int
     status: str
+    input_path: Optional[str] = None
+    result_path: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -252,8 +275,7 @@ class DetectionTaskResponse(_ModelFieldsBase):
     created_at: datetime
     completed_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
 
 
 class DetectionResultResponse(BaseModel):
@@ -261,6 +283,7 @@ class DetectionResultResponse(BaseModel):
     id: int
     task_id: int
     image_path: str
+    annotated_image_path: Optional[str] = None
     annotated_image_url: Optional[str] = None
     class_name: str
     class_name_cn: Optional[str] = None
@@ -305,14 +328,22 @@ class TrainingTaskCreate(_ModelFieldsBase):
     """创建训练任务"""
     scene_id: int = Field(..., description="关联场景 ID")
     dataset_project_id: Optional[int] = Field(None, description="训练数据集项目ID")
-    model_name: str = Field(default="yolov11n", description="基础模型")
+    model_name: str = Field(default="yolov11n", min_length=1, max_length=50, description="基础模型或 .pt 检查点文件名")
     epochs: int = Field(default=100, ge=1, le=500, description="训练轮数")
-    img_size: int = Field(default=640, description="图像尺寸")
+    img_size: int = Field(default=640, ge=32, le=4096, multiple_of=32, description="图像尺寸（32 的倍数）")
     batch_size: int = Field(default=16, ge=1, le=64, description="批次大小")
-    device: str = Field(default="0", description="训练设备")
-    optimizer: str = Field(default="SGD", description="优化器")
-    lr0: float = Field(default=0.01, description="初始学习率")
+    device: str = Field(default="cpu", pattern=r"^(cpu|mps|cuda(?::\d+)?|\d+(?:,\d+)*)$", description="训练设备")
+    optimizer: Literal["SGD", "Adam", "AdamW"] = Field(default="SGD", description="优化器")
+    lr0: float = Field(default=0.01, gt=0, le=1, description="初始学习率")
     augment_config: Optional[dict] = Field(None, description="数据增强配置")
+
+    @field_validator("model_name")
+    @classmethod
+    def validate_model_name(cls, value: str) -> str:
+        value = value.strip()
+        if "/" in value or "\\" in value or value in {".", ".."}:
+            raise ValueError("model_name 只能是模型名称或当前服务可解析的 .pt 文件名")
+        return value
 
 
 class TrainingTaskResponse(_ModelFieldsBase):
@@ -412,9 +443,9 @@ class ModelVersionCreate(_ModelFieldsBase):
 
 class ModelValidateRequest(BaseModel):
     """模型评估请求"""
-    split: str = Field(default="val", description="评估数据集划分: val / test / train")
-    conf: float = Field(default=0.001, description="置信度阈值")
-    iou: float = Field(default=0.6, description="NMS IoU 阈值")
+    split: Literal["val", "test", "train"] = Field(default="val", description="评估数据集划分: val / test / train")
+    conf: float = Field(default=0.001, ge=0, le=1, description="置信度阈值")
+    iou: float = Field(default=0.6, gt=0, le=1, description="NMS IoU 阈值")
 
 
 class ModelValidateResponse(_ModelFieldsBase):
@@ -430,8 +461,8 @@ class ModelValidateResponse(_ModelFieldsBase):
 
 class ModelExportRequest(BaseModel):
     """模型导出请求"""
-    version: Optional[str] = Field(None, description="版本号（如 v1.0.0，不传则自动生成）")
-    description: Optional[str] = Field(None, description="版本描述/变更说明")
+    version: Optional[str] = Field(None, pattern=r"^v?\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$", description="版本号（如 v1.0.0，不传则自动生成）")
+    description: Optional[str] = Field(None, max_length=1000, description="版本描述/变更说明")
     set_default: bool = Field(default=False, description="是否设为该场景的默认模型")
     upload_minio: bool = Field(default=True, description="是否上传到 MinIO")
 

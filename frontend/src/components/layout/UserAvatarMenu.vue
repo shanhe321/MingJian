@@ -21,11 +21,8 @@
         <el-dropdown-menu>
           <div class="avatar-menu-header">
             <strong>{{ displayName }}</strong>
-            <small>RSOD Agent Platform</small>
+            <small>{{ roleText }}</small>
           </div>
-          <el-dropdown-item command="profile">
-            <el-icon><User /></el-icon>个人信息
-          </el-dropdown-item>
           <el-dropdown-item command="settings">
             <el-icon><Setting /></el-icon>系统设置
           </el-dropdown-item>
@@ -41,7 +38,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Setting, SwitchButton, User } from '@element-plus/icons-vue'
+import { Setting, SwitchButton } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 
@@ -50,22 +47,29 @@ const userStore = useUserStore()
 
 const displayName = computed(() => userStore.username || 'User')
 const userInitial = computed(() => displayName.value.charAt(0).toUpperCase())
+const roleText = computed(() => {
+  const labels = { admin: '管理员', user: '普通用户' }
+  const roles = userStore.roles.map((role) => labels[role] || role)
+  return roles.length ? roles.join(' · ') : '未分配角色'
+})
 
-function handleCommand(command) {
+async function handleCommand(command) {
   switch (command) {
-    case 'profile':
     case 'settings':
       router.push('/settings')
       break
     case 'logout':
-      ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }).then(() => {
-        userStore.logout()
-        router.push('/login')
-      }).catch(() => {})
+      try {
+        await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        })
+        await userStore.secureLogout()
+        await router.push('/login')
+      } catch {
+        // 用户取消退出时保持当前会话。
+      }
       break
   }
 }

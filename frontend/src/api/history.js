@@ -3,6 +3,8 @@
  */
 import request from '@/utils/request'
 
+const REPORT_DOWNLOAD_TIMEOUT_MS = 3 * 60 * 1000
+
 /**
  * 获取检测任务分页列表
  * @param {Object} params - 查询参数
@@ -51,4 +53,22 @@ export function getHistorySummary() {
  */
 export function getScenes() {
   return request.get('/history/scenes')
+}
+
+export function redetectTask(taskId) {
+  return request.post(`/history/tasks/${taskId}/redetect`, null, { timeout: 5 * 60 * 1000 })
+}
+
+export function downloadReport(taskId) {
+  return request.get(`/history/tasks/${taskId}/report.md`, {
+    responseType: 'blob',
+    timeout: REPORT_DOWNLOAD_TIMEOUT_MS,
+  })
+}
+
+export function downloadReportArchive(taskId) {
+  return request.get(`/history/tasks/${taskId}/report.zip`, {
+    responseType: 'blob',
+    timeout: REPORT_DOWNLOAD_TIMEOUT_MS,
+  })
 }

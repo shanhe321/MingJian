@@ -30,6 +30,7 @@ class CameraWs {
     this.conf = options.conf || 0.25
     this.iou = options.iou || 0.45
     this.sceneId = options.sceneId
+    this.token = options.token || ''
 
     this.onResult = options.onResult || (() => {})
     this.onConfigOk = options.onConfigOk || (() => {})
@@ -48,14 +49,16 @@ class CameraWs {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
-    const wsUrl = `${protocol}//${host}/api/detection/camera`
+    if (!this.token) {
+      this.onError('登录状态无效，请重新登录')
+      return
+    }
+    const wsUrl = `${protocol}//${host}/api/detection/camera?token=${encodeURIComponent(this.token)}`
 
     this.ws = new WebSocket(wsUrl)
 
     this.ws.onopen = () => {
       this.isConnected = true
-      console.log('[CameraWs] 连接已建立')
-
       this.ws.send(
         JSON.stringify({
           type: 'config',
@@ -76,9 +79,9 @@ class CameraWs {
       }
     }
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (event) => {
       this.isConnected = false
-      console.log('[CameraWs] 连接已关闭')
+      if (event.code === 1008) this.onError(event.reason || '摄像头连接认证失败')
       this.onClose()
     }
 
@@ -115,9 +118,12 @@ class CameraWs {
    * 关闭连接
    */
   close() {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'close' }))
-      this.ws.close()
+    const socket = this.ws
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: 'close' }))
+    }
+    if (socket && [WebSocket.CONNECTING, WebSocket.OPEN].includes(socket.readyState)) {
+      socket.close()
     }
     this.ws = null
     this.isConnected = false
@@ -131,6 +137,7 @@ class CameraWs {
     this.conf = config.conf || this.conf
     this.iou = config.iou || this.iou
     this.sceneId = config.sceneId
+    this.token = config.token || this.token
   }
 
   /**
@@ -150,7 +157,6 @@ class CameraWs {
         break
 
       case 'config_ok':
-        console.log('[CameraWs] 配置确认:', data.message)
         this.onConfigOk(data)
         break
 

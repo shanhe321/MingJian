@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from app.agent.detection_agent import detection_agent
 from app.agent.memory import ConversationMemory, conversation_memory
-from app.api.auth import get_current_user
+from app.api.auth import get_current_user, require_admin
 from app.config.settings import settings
 from app.rag.document_loader import DocumentLoader
 from app.rag.embedding import EmbeddingService
@@ -57,6 +57,12 @@ def test_memory_preserves_chronological_order_and_key_format():
 
     memory.clear_session(7, "abc123")
     assert memory.load_history(7, "abc123") == []
+
+
+def test_session_title_is_generated_from_first_user_message():
+    title = ConversationMemory._build_title("  帮我   检测这张 PCB 是否有短路  ")
+    assert title == "帮我 检测这张 PCB 是否有短路"
+    assert ConversationMemory._build_title("缺陷" * 30).endswith("…")
 
 
 def test_document_loader_loads_three_documents_and_splits_them():
@@ -212,6 +218,9 @@ def test_knowledge_api_contract(client, monkeypatch):
         lambda query, top_k: [{"content": query, "similarity": 1.0}],
     )
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1)
+    app.dependency_overrides[require_admin] = lambda: SimpleNamespace(
+        id=1, username="admin", is_superuser=True
+    )
     try:
         assert client.post("/api/knowledge/build?force_rebuild=true").json()["stats"][
             "total_chunks"
@@ -223,6 +232,7 @@ def test_knowledge_api_contract(client, monkeypatch):
         )
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(require_admin, None)
 
     assert response.json()["count"] == 1
 
@@ -231,8 +241,11 @@ def test_chat_session_list_and_clear_api(client, monkeypatch):
     calls = []
     monkeypatch.setattr(
         conversation_memory,
-        "get_sessions",
-        lambda user_id: ["session-a", "session-b"] if user_id == 6 else [],
+        "get_session_summaries",
+        lambda user_id: [
+            {"session_id": "session-a", "title": "检测 PCB", "message_count": 2, "updated_at": None},
+            {"session_id": "session-b", "title": "查看统计", "message_count": 4, "updated_at": None},
+        ] if user_id == 6 else [],
     )
     monkeypatch.setattr(
         conversation_memory,
@@ -249,7 +262,13 @@ def test_chat_session_list_and_clear_api(client, monkeypatch):
     finally:
         app.dependency_overrides.pop(get_current_user, None)
 
-    assert sessions.json() == {"sessions": ["session-a", "session-b"]}
+    assert sessions.json() == {
+        "sessions": ["session-a", "session-b"],
+        "items": [
+            {"session_id": "session-a", "title": "检测 PCB", "message_count": 2, "updated_at": None},
+            {"session_id": "session-b", "title": "查看统计", "message_count": 4, "updated_at": None},
+        ],
+    }
     assert cleared.json() == {"message": "会话 session-a 已清空"}
     assert calls == [(6, "session-a")]
 
@@ -261,6 +280,12 @@ async def test_agent_stream_emits_six_event_types_and_saves_memory(monkeypatch):
             assert state["user_id"] == 1
             assert state["session_id"] == "session1"
             assert version == "v2"
+            yield {
+                "event": "on_chain_start",
+                "name": "analysis",
+                "data": {},
+                "metadata": {"langgraph_node": "analysis"},
+            }
             yield {
                 "event": "on_tool_start",
                 "name": "search_knowledge",
@@ -282,7 +307,12 @@ async def test_agent_stream_emits_six_event_types_and_saves_memory(monkeypatch):
             yield {
                 "event": "on_chain_end",
                 "name": "LangGraph",
-                "data": {"output": {"final_response": "回答"}},
+                "data": {
+                    "output": {
+                        "final_response": "回答",
+                        "agent_used": "analysis",
+                    }
+                },
                 "metadata": {},
             }
 
@@ -292,7 +322,9 @@ async def test_agent_stream_emits_six_event_types_and_saves_memory(monkeypatch):
     monkeypatch.setattr(
         conversation_memory,
         "save_message",
-        lambda user_id, session_id, role, content: saved.append((role, content)),
+        lambda user_id, session_id, role, content, agent_used=None: saved.append(
+            (role, content, agent_used)
+        ),
     )
 
     output = [
@@ -311,8 +343,13 @@ async def test_agent_stream_emits_six_event_types_and_saves_memory(monkeypatch):
         "text_chunk",
         "done",
     }
-    assert ("user", "什么是 IoU？") in saved
-    assert ("ai", "回答") in saved
+    assert ("user", "什么是 IoU？", None) in saved
+    assert ("ai", "回答", "analysis") in saved
+    assert any(
+        event.get("content") == "正在查询数据与知识库..."
+        for event in output
+        if event["type"] == "thinking"
+    )
 
     class FailingGraph:
         async def astream_events(self, state, version):
@@ -331,7 +368,7 @@ async def test_agent_stream_emits_six_event_types_and_saves_memory(monkeypatch):
     assert "error" in {event["type"] for event in error_output}
 
 
-def test_agent_has_exactly_eight_documented_tools():
+def test_agent_binds_detection_analysis_management_and_knowledge_tools():
     assert [tool.name for tool in detection_agent.all_tools] == [
         "detect_single_image",
         "detect_batch_images",
@@ -339,6 +376,12 @@ def test_agent_has_exactly_eight_documented_tools():
         "detect_video_file",
         "query_detection_stats",
         "query_detection_history",
+        "query_defect_distribution",
+        "query_detection_trend",
+        "query_risk_distribution",
         "query_user_list",
+        "query_permissions",
+        "query_system_detection_total",
+        "query_model_versions",
         "search_knowledge",
     ]

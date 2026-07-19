@@ -8,6 +8,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import request from "@/utils/request";
+import { setupErrorReporting } from "@/utils/errorReporter";
 
 describe("Axios 请求封装", () => {
   beforeEach(() => {
@@ -17,22 +19,19 @@ describe("Axios 请求封装", () => {
     localStorage.clear();
   });
 
-  it("应该正确创建 axios 实例", async () => {
-    const { default: request } = await import("@/utils/request");
+  it("应该正确创建 axios 实例", () => {
     expect(request).toBeDefined();
     expect(request.defaults.baseURL).toBe("/api");
     expect(request.defaults.timeout).toBe(30000);
   });
 
-  it("请求拦截器应该设置 Content-Type", async () => {
-    const { default: request } = await import("@/utils/request");
+  it("请求拦截器应该设置 Content-Type", () => {
     expect(request.defaults.headers["Content-Type"]).toBe("application/json");
   });
 });
 
 describe("错误上报模块", () => {
-  it("应该正确初始化错误上报", async () => {
-    const { setupErrorReporting } = await import("@/utils/errorReporter");
+  it("应该正确初始化错误上报", () => {
     expect(setupErrorReporting).toBeDefined();
     expect(typeof setupErrorReporting).toBe("function");
   });

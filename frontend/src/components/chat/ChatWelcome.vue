@@ -3,8 +3,9 @@
     <div class="welcome-mark">
       <el-icon><Aim /></el-icon>
     </div>
-    <h1>开始一次 PCB 缺陷分析</h1>
-    <p>上传图片、批量文件或视频，也可以直接询问检测指标、历史记录和模型知识。</p>
+    <span class="welcome-kicker">RSOD AI</span>
+    <h1>今天想分析什么？</h1>
+    <p>提问，或添加 PCB 图片与检测文件。</p>
 
     <div class="welcome-prompts" aria-label="示例提示">
       <button
@@ -26,8 +27,8 @@ defineEmits(['use-prompt'])
 
 const prompts = [
   '检测这张 PCB 图片',
-  '今天检测了多少次？',
-  '什么是 IoU？',
+  '帮我分析缺陷类型',
+  '查看最近检测记录',
 ]
 </script>
 
@@ -35,6 +36,7 @@ const prompts = [
 .chat-welcome {
   width: min(720px, 100%);
   margin: auto;
+  min-height: 0;
   padding: $spacing-xl $spacing-md;
   text-align: center;
   color: $text-regular;
@@ -95,11 +97,19 @@ h1 {
 }
 
 p {
-  max-width: 560px;
-  margin: $spacing-md auto 0;
+  margin: 10px auto 0;
   color: $text-secondary;
   font-size: 15px;
   line-height: 1.7;
+}
+
+.welcome-kicker {
+  display: block;
+  margin-bottom: 7px;
+  color: $primary-color;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
 }
 
 .welcome-prompts {

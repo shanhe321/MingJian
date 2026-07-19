@@ -38,8 +38,9 @@
 import { computed } from 'vue'
 import {
   ArrowDown,
-  Camera,
+  Files,
   FolderOpened,
+  Folder,
   Picture,
   VideoCamera,
 } from '@element-plus/icons-vue'
@@ -62,8 +63,20 @@ const modes = [
   },
   {
     value: 'batch',
-    label: '批量 / ZIP',
-    description: '上传多张图片或 ZIP 压缩包',
+    label: '批量图片',
+    description: '一次上传多张 PCB 图片',
+    icon: Files,
+  },
+  {
+    value: 'zip',
+    label: 'ZIP 检测',
+    description: '上传一个 ZIP 压缩包异步检测',
+    icon: Folder,
+  },
+  {
+    value: 'folder',
+    label: '文件夹检测',
+    description: '选择图片文件夹并异步检测',
     icon: FolderOpened,
   },
   {
@@ -71,12 +84,6 @@ const modes = [
     label: '视频检测',
     description: '上传视频并分析采样帧',
     icon: VideoCamera,
-  },
-  {
-    value: 'camera',
-    label: '摄像头',
-    description: '进入实时摄像头检测工作台',
-    icon: Camera,
   },
 ]
 
