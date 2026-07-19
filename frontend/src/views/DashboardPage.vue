@@ -1,13 +1,8 @@
 <template>
   <div class="dashboard-page">
-    <!-- ── 页面标题 + 时间范围选择 ── -->
-    <div class="page-header">
-      <div class="page-title-copy">
-        <h2>数据看板</h2>
-        <p>了解检测任务、目标类别和系统运行趋势</p>
-      </div>
-      <h2>数据看板</h2>
-      <div>
+    <PageHeader title="数据看板" description="洞察检测任务、质量结果、目标类别与系统趋势。" eyebrow="Analytics">
+      <template #actions>
+        <div class="dashboard-controls">
         <el-radio-group v-if="userStore.isSuperuser" v-model="scope" @change="loadAllData" style="margin-right: 12px">
           <el-radio-button value="personal">个人</el-radio-button>
           <el-radio-button value="global">全局</el-radio-button>
@@ -17,13 +12,14 @@
           <el-radio-button :value="30">近 30 天</el-radio-button>
           <el-radio-button :value="90">近 90 天</el-radio-button>
         </el-radio-group>
-      </div>
-    </div>
+        </div>
+      </template>
+    </PageHeader>
 
     <!-- ── 数字统计卡片 ── -->
     <el-row :gutter="16" class="stat-cards" v-loading="loading">
       <el-col :span="6">
-        <el-card shadow="hover" class="stat-card">
+        <el-card shadow="never" class="stat-card">
           <div class="stat-icon stat-icon-tasks">
             <el-icon :size="28" color="#5b7cfa"><Document /></el-icon>
           </div>
@@ -35,7 +31,7 @@
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover" class="stat-card">
+        <el-card shadow="never" class="stat-card">
           <div class="stat-icon stat-icon-images">
             <el-icon :size="28" color="#48b8f7"><PictureFilled /></el-icon>
           </div>
@@ -47,7 +43,7 @@
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover" class="stat-card">
+        <el-card shadow="never" class="stat-card">
           <div class="stat-icon stat-icon-objects">
             <el-icon :size="28" color="#8b5cf6"><Aim /></el-icon>
           </div>
@@ -59,7 +55,7 @@
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover" class="stat-card">
+        <el-card shadow="never" class="stat-card">
           <div class="stat-icon stat-icon-time">
             <el-icon :size="28" color="#d99018"><Timer /></el-icon>
           </div>
@@ -80,7 +76,7 @@
     <el-row :gutter="16" class="chart-row">
       <!-- 每日检测趋势（折线图） -->
       <el-col :span="16">
-        <el-card shadow="hover">
+        <el-card shadow="never">
           <template #header>
             <span>每日检测趋势</span>
           </template>
@@ -89,7 +85,7 @@
       </el-col>
       <!-- 类别分布（饼图） -->
       <el-col :span="8">
-        <el-card shadow="hover">
+        <el-card shadow="never">
           <template #header>
             <span>类别分布</span>
           </template>
@@ -101,7 +97,7 @@
     <el-row :gutter="16" class="chart-row">
       <!-- 场景分布（柱状图） -->
       <el-col :span="8">
-        <el-card shadow="hover">
+        <el-card shadow="never">
           <template #header>
             <span>场景分布</span>
           </template>
@@ -110,27 +106,28 @@
       </el-col>
       <!-- 任务类型分布（环形图） -->
       <el-col :span="8">
-        <el-card shadow="hover">
+        <el-card shadow="never">
           <template #header><span>风险等级分布</span></template>
           <div ref="riskChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
       <el-col :span="8">
-        <el-card shadow="hover">
+        <el-card shadow="never">
           <template #header><span>任务类型分布</span></template>
           <div ref="typeChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
     </el-row>
 
-    <el-card shadow="hover">
+    <el-card shadow="never">
       <template #header><span>最近检测记录</span></template>
       <el-table :data="stats.recent_records || []" size="small">
         <el-table-column prop="task_id" label="任务" width="80" />
+        <el-table-column v-if="scope === 'global'" prop="user_id" label="用户 ID" />
         <el-table-column prop="task_type" label="类型" />
-        <el-table-column prop="status" label="状态" />
+        <el-table-column label="状态"><template #default="{ row }"><StatusTag group="detection" :status="row.status" /></template></el-table-column>
         <el-table-column prop="quality_conclusion" label="质检结论" />
-        <el-table-column prop="risk_level" label="风险" />
+        <el-table-column label="风险"><template #default="{ row }"><StatusTag group="risk" :status="row.risk_level" /></template></el-table-column>
         <el-table-column prop="created_at" label="创建时间" min-width="180" />
       </el-table>
     </el-card>
@@ -148,11 +145,13 @@
  *   - ECharts 柱状图：场景分布
  *   - ECharts 环形图：任务类型分布
  */
-import { getClassDistribution, getOverview, getSceneDistribution, getStatistics, getTrend, getTypeDistribution } from '@/api/dashboard'
+import { getOverview, getTypeDistribution } from '@/api/dashboard'
 import { useUserStore } from '@/stores/user'
 import { Aim, Document, PictureFilled, Timer } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import PageHeader from '@/components/common/PageHeader.vue'
+import StatusTag from '@/components/common/StatusTag.vue'
 
 // ── 响应式状态 ──
 const periodDays = ref(30)
@@ -217,19 +216,15 @@ async function loadAllData() {
   const days = periodDays.value
   loading.value = true
   try {
-    const [overview, legacyStats, trend, classes, scenes, types] = await Promise.all([
+    const [overview, types] = await Promise.all([
       getOverview(days, scope.value),
-      getStatistics(days, scope.value),
-      getTrend(days, scope.value),
-      getClassDistribution(days, scope.value),
-      getSceneDistribution(days, scope.value),
       getTypeDistribution(days, scope.value),
     ])
 
-    stats.value = { ...overview, legacy_statistics: legacyStats }
-    renderTrendChart(trend.trend || overview.trend)
-    renderClassChart(classes.distribution || overview.class_distribution)
-    renderSceneChart(scenes.distribution || overview.scene_distribution)
+    stats.value = overview
+    renderTrendChart(overview.trend)
+    renderClassChart(overview.class_distribution)
+    renderSceneChart(overview.scene_distribution)
     renderRiskChart(overview.risk_distribution)
     renderTypeChart(types.distribution || [])
   } catch (err) {

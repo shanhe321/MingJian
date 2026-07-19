@@ -1,16 +1,12 @@
 <template>
   <div class="training-page">
-    <!-- ── 页面标题 ── -->
-    <div class="page-header">
-      <div class="page-title-copy">
-        <h2>模型训练</h2>
-        <p>管理训练任务、查看进度并评估模型表现</p>
-      </div>
-      <h2>模型训练与监控</h2>
-      <el-button type="primary" @click="showCreateDialog = true">
-        <el-icon><Plus /></el-icon>新建训练任务
-      </el-button>
-    </div>
+    <PageHeader title="模型训练" description="创建训练任务、监控指标，并评估与导出模型产物。" eyebrow="AI Training">
+      <template #actions>
+        <el-button type="primary" @click="showCreateDialog = true">
+          <el-icon><Plus /></el-icon>新建训练任务
+        </el-button>
+      </template>
+    </PageHeader>
 
     <!-- ── 训练任务列表 ── -->
     <section class="training-overview" aria-label="训练任务概览">
@@ -20,103 +16,13 @@
       </div>
     </section>
 
-    <el-card class="task-list-card" shadow="never">
-      <template #header>
-        <div class="card-header">
-          <span>训练任务列表</span>
-          <el-button text @click="fetchTasks">
-            <el-icon><Refresh /></el-icon>刷新
-          </el-button>
-        </div>
-      </template>
-
-      <el-table :data="taskList" stripe style="width: 100%" v-loading="loadingTasks">
-        <el-table-column label="任务 ID" width="110">
-          <template #default="{ row }">
-            {{ row.task_uuid?.slice(0, 8) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="model_name" label="模型" width="110" />
-        <el-table-column label="设备" width="80">
-          <template #default="{ row }">
-            {{ row.device || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="进度" width="180">
-          <template #default="{ row }">
-            <el-progress
-              :percentage="row.progress || 0"
-              :status="row.status === 'completed' ? 'success' : row.status === 'failed' ? 'exception' : ''"
-              :stroke-width="16"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="Epoch" width="100">
-          <template #default="{ row }">
-            {{ row.current_epoch }}/{{ row.epochs }}
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">
-              {{ statusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="180" />
-        <el-table-column label="操作" width="180" fixed="right">
-          <template #default="{ row }">
-            <el-button size="small" type="primary" text @click="selectTask(row)">
-              监控
-            </el-button>
-            <el-button v-if="['pending', 'running'].includes(row.status)" size="small" type="danger" text @click="stopTask(row)">停止</el-button>
-          </template>
-        </el-table-column>
-
-        <template #empty>
-          <el-empty description="暂无训练任务，点击右上角新建" />
-        </template>
-      </el-table>
-    </el-card>
+    <TrainingTaskTable :tasks="taskList" :scenes="scenes" :loading="loadingTasks" @refresh="fetchTasks" @select="selectTask" @stop="stopTask" />
 
     <!-- ── 训练监控面板 ── -->
-    <el-card v-if="selectedTask" class="monitor-card" shadow="never">
-      <template #header>
-        <div class="card-header">
-          <span>
-            训练监控 — 任务 {{ selectedTask.task_uuid?.slice(0, 8) }}
-            <el-tag :type="statusType(selectedTask.status)" size="small" style="margin-left: 8px">
-              {{ statusText(selectedTask.status) }}
-            </el-tag>
-          </span>
-          <div class="monitor-info">
-            <span>模型: {{ selectedTask.model_name }}</span>
-            <span>设备: {{ selectedTask.device || '-' }}</span>
-            <span>Epoch: {{ selectedTask.current_epoch }}/{{ selectedTask.epochs }}</span>
-          </div>
-        </div>
-      </template>
-
-      <!-- 最新指标卡片 -->
-      <el-row :gutter="16" class="metric-cards">
-        <el-col :span="4" v-for="item in metricCards" :key="item.label">
-          <el-card shadow="hover" class="metric-item">
-            <div class="metric-value">{{ item.value }}</div>
-            <div class="metric-label">{{ item.label }}</div>
-          </el-card>
-        </el-col>
-      </el-row>
-
-      <!-- 训练曲线图表 -->
-      <el-row :gutter="16" style="margin-top: 16px">
-        <el-col :span="12">
-          <div ref="lossChartRef" style="height: 350px"></div>
-        </el-col>
-        <el-col :span="12">
-          <div ref="mapChartRef" style="height: 350px"></div>
-        </el-col>
-      </el-row>
-    </el-card>
+    <TrainingMonitor :task="selectedTask" :metrics="metricCards">
+      <template #loss-chart><div ref="lossChartRef" style="height:350px"></div></template>
+      <template #map-chart><div ref="mapChartRef" style="height:350px"></div></template>
+    </TrainingMonitor>
 
     <!-- ── 模型操作栏 ── -->
     <el-card
@@ -159,71 +65,7 @@
     </el-card>
 
     <!-- ── 评估报告面板 ── -->
-    <el-card v-if="evalReport" class="eval-card" shadow="never">
-      <template #header>
-        <div class="card-header">
-          <span>
-            评估报告
-            <el-tag size="small" style="margin-left: 8px">
-              {{ evalReport.split === 'val' ? '验证集' : evalReport.split === 'test' ? '测试集' : '训练集' }}
-            </el-tag>
-          </span>
-        </div>
-      </template>
-
-      <!-- 整体指标 -->
-      <el-row :gutter="16" class="metric-cards">
-        <el-col :span="6" v-for="item in evalMetricCards" :key="item.label">
-          <el-card shadow="hover" class="metric-item">
-            <div class="metric-value" :style="{ color: item.color }">
-              {{ item.value }}
-            </div>
-            <div class="metric-label">{{ item.label }}</div>
-          </el-card>
-        </el-col>
-      </el-row>
-
-      <!-- 每类 AP 表格 -->
-      <el-table
-        :data="perClassData"
-        stripe
-        style="width: 100%; margin-top: 16px"
-        :row-class-name="tableRowClassName"
-      >
-        <el-table-column prop="class_name" label="类别" width="200" />
-        <el-table-column prop="ap50" label="AP@50" width="120">
-          <template #default="{ row }">
-            <span :style="{ color: row.ap50 < 0.5 ? '#f56c6c' : '#67c23a' }">
-              {{ (row.ap50 * 100).toFixed(1) }}%
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="ap50_95" label="AP@50-95" width="120">
-          <template #default="{ row }">
-            {{ (row.ap50_95 * 100).toFixed(1) }}%
-          </template>
-        </el-table-column>
-        <el-table-column label="评价">
-          <template #default="{ row }">
-            <el-tag
-              :type="row.ap50 >= 0.7 ? 'success' : row.ap50 >= 0.5 ? 'warning' : 'danger'"
-              size="small"
-            >
-              {{ row.ap50 >= 0.7 ? '优秀' : row.ap50 >= 0.5 ? '良好' : '需改进' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-
-        <template #empty>
-          <el-empty description="暂无每类 AP 数据" />
-        </template>
-      </el-table>
-
-      <div v-if="weakClasses.length" class="weak-hint">
-        <el-icon><WarningFilled /></el-icon>
-        弱势类别（AP@50 &lt; 0.5）：{{ weakClasses.join('、') }}，建议增加这些类别的训练样本或检查标注质量
-      </div>
-    </el-card>
+    <EvaluationPanel :report="evalReport" :metrics="evalMetricCards" :per-class="perClassData" :weak-classes="weakClasses" />
 
     <!-- ── 新建训练任务对话框 ── -->
     <el-dialog
@@ -324,36 +166,7 @@
     </el-dialog>
 
     <!-- ── 导出模型对话框 ── -->
-    <el-dialog v-model="showExportDialog" title="导出模型" width="500px">
-      <el-form :model="exportForm" label-width="100px">
-        <el-form-item label="版本号">
-          <el-input v-model="exportForm.version" placeholder="自动生成（如 v1.0.0）" />
-        </el-form-item>
-        <el-form-item label="版本描述">
-          <el-input
-            v-model="exportForm.description"
-            type="textarea"
-            :rows="3"
-            placeholder="描述本次训练的主要变更..."
-          />
-        </el-form-item>
-        <el-form-item label="设为默认">
-          <el-switch v-model="exportForm.set_default" />
-          <span style="margin-left: 8px; color: #909399; font-size: 12px">
-            设为该场景的默认检测模型
-          </span>
-        </el-form-item>
-        <el-form-item label="上传 MinIO">
-          <el-switch v-model="exportForm.upload_minio" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showExportDialog = false">取消</el-button>
-        <el-button type="primary" @click="exportModel" :loading="exporting">
-          确认导出
-        </el-button>
-      </template>
-    </el-dialog>
+    <ModelExportDialog v-model="showExportDialog" :form="exportForm" :is-admin="userStore.isSuperuser" :loading="exporting" @submit="exportModel" />
 
     <!-- ── 测试图验证对话框 ── -->
     <el-dialog
@@ -450,11 +263,32 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, UploadFilled, WarningFilled } from '@element-plus/icons-vue'
+import { Plus, UploadFilled } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
-import request from '@/utils/request'
 import { getDatasets } from '@/api/datasets'
 import { getScenes } from '@/api/scenes'
+import {
+  downloadTrainingResults,
+  downloadTrainingWeights,
+  evaluateTraining,
+  exportTrainingModel,
+  getTrainingMetrics,
+  getTrainingStatus,
+  getTrainingTasks,
+  predictTrainingImage,
+  startTraining,
+  stopTraining,
+} from '@/api/training'
+import { useUserStore } from '@/stores/user'
+import { statusLabel, statusType as resolveStatusType } from '@/utils/statusMaps'
+import { buildTrainingExportPayload } from '@/utils/trainingExport'
+import TrainingTaskTable from '@/components/training/TrainingTaskTable.vue'
+import TrainingMonitor from '@/components/training/TrainingMonitor.vue'
+import EvaluationPanel from '@/components/training/EvaluationPanel.vue'
+import ModelExportDialog from '@/components/training/ModelExportDialog.vue'
+import PageHeader from '@/components/common/PageHeader.vue'
+
+const userStore = useUserStore()
 
 // ── 状态变量 ──
 const taskList = ref([])
@@ -475,7 +309,7 @@ const exporting = ref(false)
 const exportForm = ref({
   version: '',
   description: '',
-  set_default: true,
+  set_default: false,
   upload_minio: true,
 })
 
@@ -618,25 +452,11 @@ function tableRowClassName({ row }) {
 
 // ── 状态映射 ──
 function statusType(status) {
-  const map = {
-    pending: 'info',
-    running: 'warning',
-    completed: 'success',
-    failed: 'danger',
-    cancelled: 'info',
-  }
-  return map[status] || 'info'
+  return resolveStatusType('training', status)
 }
 
 function statusText(status) {
-  const map = {
-    pending: '等待中',
-    running: '训练中',
-    completed: '已完成',
-    failed: '失败',
-    cancelled: '已取消',
-  }
-  return map[status] || status
+  return statusLabel('training', status)
 }
 
 // ── 获取任务列表 ──
@@ -645,7 +465,7 @@ async function fetchTasks() {
   try {
     // 注意：request 拦截器已经把响应解包为 response.data，这里拿到的就是接口返回体本身
     // 后端 GET /api/training/tasks 返回 { total, items }
-    const res = await request.get('/training/tasks')
+    const res = await getTrainingTasks()
     taskList.value = res?.items || []
   } catch (e) {
     console.error('获取任务列表失败', e)
@@ -657,7 +477,7 @@ async function fetchTasks() {
 async function stopTask(task) {
   try {
     await ElMessageBox.confirm(`停止训练任务 ${task.task_uuid?.slice(0, 8)}？`, '确认停止', { type: 'warning' })
-    await request.post(`/training/stop/${task.id}`)
+    await stopTraining(task.id)
     ElMessage.success('停止请求已提交')
     await fetchTasks()
     if (selectedTask.value?.id === task.id) await fetchStatus()
@@ -696,7 +516,7 @@ async function fetchStatus() {
   if (!selectedTask.value) return
   const taskId = selectedTask.value.id
   try {
-    const statusRes = await request.get(`/training/status/${taskId}`)
+    const statusRes = await getTrainingStatus(taskId)
     if (statusRes?.task) {
       selectedTask.value = {
         ...selectedTask.value,
@@ -706,7 +526,7 @@ async function fetchStatus() {
       }
     }
 
-    const metricsRes = await request.get(`/training/metrics/${taskId}`)
+    const metricsRes = await getTrainingMetrics(taskId)
     const metrics = metricsRes?.metrics || []
     taskMetrics.value = metrics
     if (metrics.length > 0) {
@@ -841,7 +661,7 @@ async function createTask() {
   }
   creating.value = true
   try {
-    const res = await request.post('/training/start', trainForm.value)
+    const res = await startTraining(trainForm.value)
     ElMessage.success(res?.message || `训练任务已创建：${res?.task_uuid?.slice(0, 8) || ''}`)
     showCreateDialog.value = false
     const selectedSceneId = trainForm.value.scene_id
@@ -870,11 +690,7 @@ async function validateModel() {
   validating.value = true
   try {
     const taskId = selectedTask.value.id
-    const res = await request.post(
-      `/training/validate/${taskId}`,
-      { split: 'val', conf: 0.001, iou: 0.6 },
-      { timeout: 300000 }
-    )
+    const res = await evaluateTraining(taskId, { split: 'val', conf: 0.001, iou: 0.6 })
     evalReport.value = res
     ElMessage.success(`评估完成: mAP50=${(res.overall.map50 * 100).toFixed(1)}%`)
   } catch (e) {
@@ -895,10 +711,8 @@ async function exportModel() {
   exporting.value = true
   try {
     const taskId = selectedTask.value.id
-    const res = await request.post(`/training/export/${taskId}`, {
-      ...exportForm.value,
-      version: normalizedVersion || null,
-    })
+    const payload = buildTrainingExportPayload(exportForm.value, userStore.isSuperuser)
+    const res = await exportTrainingModel(taskId, payload)
     ElMessage.success(res?.message || '模型导出成功')
     showExportDialog.value = false
   } catch (e) {
@@ -913,12 +727,7 @@ async function downloadModel() {
   if (!selectedTask.value) return
   try {
     const taskId = selectedTask.value.id
-    const token = localStorage.getItem('rsod_token') || ''
-    const response = await fetch(`/api/training/download/${taskId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!response.ok) throw new Error('下载失败')
-    const blob = await response.blob()
+    const blob = await downloadTrainingWeights(taskId)
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -936,7 +745,7 @@ async function downloadModel() {
 async function downloadResults() {
   if (!selectedTask.value?.task_uuid) return
   try {
-    const blob = await request.get(`/training/results/${selectedTask.value.task_uuid}`, { responseType: 'blob' })
+    const blob = await downloadTrainingResults(selectedTask.value.task_uuid)
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -973,7 +782,7 @@ async function runPredict() {
     formData.append('iou', predictIou.value)
 
     // 不手动设置 Content-Type，交由浏览器自动生成 multipart boundary
-    const res = await request.post('/training/predict', formData)
+    const res = await predictTrainingImage(formData)
     predictResult.value = res
     ElMessage.success(`检测完成: 发现 ${res.total_objects} 个目标`)
   } catch (e) {

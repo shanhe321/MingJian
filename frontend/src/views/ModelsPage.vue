@@ -1,46 +1,22 @@
-<template>
-  <div>
-    <div class="page-header"><h2>模型版本</h2><el-button @click="load">刷新</el-button></div>
-    <el-table :data="items" v-loading="loading">
-      <el-table-column prop="version" label="版本" />
-      <el-table-column prop="model_name" label="模型" min-width="200" />
-      <el-table-column prop="status" label="状态" />
-      <el-table-column prop="map50" label="mAP50" />
-      <el-table-column prop="precision" label="Precision" />
-      <el-table-column prop="recall" label="Recall" />
-      <el-table-column label="默认"><template #default="{ row }"><el-tag v-if="row.is_default" type="success">默认</el-tag></template></el-table-column>
-      <el-table-column label="评估产物" min-width="240"><template #default="{ row }"><el-link v-for="(url,name) in row.artifacts" :key="name" :href="url" target="_blank" style="margin-right:8px">{{ name }}</el-link></template></el-table-column>
-      <el-table-column label="操作" width="230"><template #default="{ row }"><el-button link @click="showDetail(row)">详情</el-button><template v-if="userStore.isSuperuser"><el-button link type="primary" :disabled="row.is_default || row.status !== 'active'" @click="makeDefault(row)">设为默认</el-button><el-button link type="danger" :disabled="row.status !== 'active'" @click="archive(row)">归档</el-button></template></template></el-table-column>
-    </el-table>
-    <el-dialog v-model="detailDialog" title="模型版本详情" width="720px">
-      <el-descriptions v-if="detail" :column="2" border>
-        <el-descriptions-item label="版本">{{ detail.version }}</el-descriptions-item>
-        <el-descriptions-item label="模型">{{ detail.model_name }}</el-descriptions-item>
-        <el-descriptions-item label="状态">{{ detail.status }}</el-descriptions-item>
-        <el-descriptions-item label="默认模型">{{ detail.is_default ? '是' : '否' }}</el-descriptions-item>
-        <el-descriptions-item label="mAP50">{{ metric(detail.map50) }}</el-descriptions-item>
-        <el-descriptions-item label="mAP50-95">{{ metric(detail.map50_95) }}</el-descriptions-item>
-        <el-descriptions-item label="Precision">{{ metric(detail.precision) }}</el-descriptions-item>
-        <el-descriptions-item label="Recall">{{ metric(detail.recall) }}</el-descriptions-item>
-        <el-descriptions-item label="文件大小">{{ detail.file_size || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{ detail.created_at }}</el-descriptions-item>
-        <el-descriptions-item label="各类别 AP" :span="2"><pre>{{ JSON.stringify(detail.per_class_ap || {}, null, 2) }}</pre></el-descriptions-item>
-        <el-descriptions-item label="缺失评估产物" :span="2">{{ detail.artifact_status?.missing?.join('、') || '无' }}</el-descriptions-item>
-      </el-descriptions>
-    </el-dialog>
-  </div>
-</template>
+<template><div class="models-page"><PageHeader title="模型管理" description="按场景管理模型版本、评估指标和部署状态。" eyebrow="Model Registry"><template #actions><el-button :loading="loading" @click="load">刷新</el-button></template></PageHeader>
+  <section class="summary-grid"><article v-for="card in summary" :key="card.label"><span>{{card.label}}</span><strong>{{card.value}}</strong><small>{{card.note}}</small></article></section>
+  <el-card shadow="never" class="filter-card"><el-form inline><el-form-item label="关键词"><el-input v-model="filters.keyword" clearable placeholder="版本或模型名称"/></el-form-item><el-form-item label="场景"><el-select v-model="filters.scene_id" clearable placeholder="全部场景" style="width:180px"><el-option v-for="scene in scenes" :key="scene.id" :label="scene.display_name" :value="scene.id"/></el-select></el-form-item><el-form-item label="状态"><el-select v-model="filters.status" clearable placeholder="全部状态" style="width:140px"><el-option label="活跃" value="active"/><el-option v-if="userStore.isSuperuser" label="已归档" value="archived"/></el-select></el-form-item><el-form-item><el-button @click="reset">重置</el-button></el-form-item></el-form></el-card>
+  <el-card shadow="never" class="table-card"><el-table :data="filteredItems" v-loading="loading" row-key="id"><el-table-column label="版本" min-width="150"><template #default="{row}"><button class="version-button" @click="showDetail(row)">{{row.version}}</button><small>{{row.model_name}}</small></template></el-table-column><el-table-column label="场景" min-width="150"><template #default="{row}">{{sceneName(row.scene_id)}}</template></el-table-column><el-table-column label="训练来源" width="120"><template #default="{row}">任务 #{{row.training_task_id||'-'}}</template></el-table-column><el-table-column label="状态" width="100"><template #default="{row}"><StatusTag group="model" :status="row.status"/></template></el-table-column><el-table-column label="mAP50" width="95"><template #default="{row}">{{metric(row.map50)}}</template></el-table-column><el-table-column label="Precision" width="95"><template #default="{row}">{{metric(row.precision)}}</template></el-table-column><el-table-column label="产物" width="110"><template #default="{row}"><el-tag :type="row.artifact_status?.missing?.length?'warning':'success'">{{row.artifact_status?.missing?.length?`缺 ${row.artifact_status.missing.length} 项`:'完整'}}</el-tag></template></el-table-column><el-table-column label="默认" width="80"><template #default="{row}"><el-tag v-if="row.is_default" type="success">场景默认</el-tag><span v-else>-</span></template></el-table-column><el-table-column label="操作" min-width="250" fixed="right"><template #default="{row}"><el-button link @click="showDetail(row)">详情</el-button><el-link v-if="row.model_url" :href="row.model_url" target="_blank" type="primary" class="download-link">下载</el-link><template v-if="userStore.isSuperuser"><el-button link type="primary" :loading="actionId===row.id" :disabled="row.is_default||row.status!=='active'" @click="makeDefault(row)">设为默认</el-button><el-button link type="danger" :loading="actionId===row.id" :disabled="row.status!=='active'" @click="archive(row)">归档</el-button></template></template></el-table-column><template #empty><el-empty :description="errorText||'暂无符合条件的模型版本'"/></template></el-table></el-card>
+  <ModelDetailDrawer v-model="drawer" :model="detail" :scenes="scenes" :loading="detailLoading"/>
+</div></template>
 <script setup>
-import { archiveModel, getModel, getModels, setDefaultModel } from '@/api/models'
-import { useUserStore } from '@/stores/user'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { onMounted, ref } from 'vue'
-const userStore=useUserStore(),items=ref([]),loading=ref(false),detailDialog=ref(false),detail=ref(null)
-async function load(){loading.value=true;try{items.value=(await getModels({include_archived:userStore.isSuperuser})).items||[]}finally{loading.value=false}}
-function metric(value){return value==null?'-':Number(value).toFixed(4)}
-async function showDetail(row){try{detail.value=await getModel(row.id);detailDialog.value=true}catch{}}
-async function makeDefault(row){await setDefaultModel(row.id);ElMessage.success('默认模型已切换');await load()}
-async function archive(row){await ElMessageBox.confirm(`归档模型 ${row.version}？`,'确认',{type:'warning'});await archiveModel(row.id);ElMessage.success('模型已归档');await load()}
+import { computed,onMounted,reactive,ref } from 'vue'
+import { ElMessage,ElMessageBox } from 'element-plus'
+import PageHeader from '@/components/common/PageHeader.vue';import StatusTag from '@/components/common/StatusTag.vue';import ModelDetailDrawer from '@/components/models/ModelDetailDrawer.vue'
+import { archiveModel,getModel,getModels,setDefaultModel } from '@/api/models';import { getScenes } from '@/api/scenes';import { useUserStore } from '@/stores/user'
+import { filterModels } from '@/utils/modelFilters'
+const userStore=useUserStore(),items=ref([]),scenes=ref([]),loading=ref(false),errorText=ref(''),drawer=ref(false),detail=ref(null),detailLoading=ref(false),actionId=ref(null);const filters=reactive({keyword:'',scene_id:'',status:''})
+const filteredItems=computed(()=>filterModels(items.value,filters));const summary=computed(()=>[{label:'模型版本',value:items.value.length,note:'当前可访问版本'},{label:'活跃模型',value:items.value.filter(i=>i.status==='active').length,note:'可用于检测'},{label:'场景默认',value:items.value.filter(i=>i.is_default).length,note:'按场景生效'},{label:'产物完整',value:items.value.filter(i=>!i.artifact_status?.missing?.length).length,note:'评估资料齐全'}]);const sceneName=id=>scenes.value.find(s=>s.id===id)?.display_name||`场景 #${id}`;const metric=v=>v==null?'-':`${(Number(v)*100).toFixed(2)}%`
+async function load(){loading.value=true;errorText.value='';try{const [modelRes,sceneRes]=await Promise.all([getModels({include_archived:userStore.isSuperuser}),getScenes()]);items.value=modelRes.items||[];scenes.value=sceneRes.items||[]}catch{errorText.value='模型版本加载失败，请稍后重试'}finally{loading.value=false}}
+function reset(){Object.assign(filters,{keyword:'',scene_id:'',status:''})}
+async function showDetail(row){drawer.value=true;detailLoading.value=true;try{detail.value=await getModel(row.id)}catch{}finally{detailLoading.value=false}}
+async function makeDefault(row){try{await ElMessageBox.confirm(`确认将 ${sceneName(row.scene_id)} 的默认模型切换为 ${row.version}？`,'切换默认模型',{type:'warning'});actionId.value=row.id;await setDefaultModel(row.id);ElMessage.success('默认模型已切换');await load()}catch{}finally{actionId.value=null}}
+async function archive(row){try{await ElMessageBox.confirm(`确认归档 ${sceneName(row.scene_id)} 的模型 ${row.version}？后端会确保该场景至少保留一个可用模型。`,'归档模型',{type:'warning',confirmButtonText:'确认归档'});actionId.value=row.id;await archiveModel(row.id);ElMessage.success('模型已归档');await load()}catch{}finally{actionId.value=null}}
 onMounted(load)
 </script>
-<style scoped>.page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}.page-header h2{margin:0}</style>
+<style lang="scss" scoped>.models-page{max-width:$page-max-width;margin:0 auto}.summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:$spacing-sm;margin-bottom:$spacing-md}.summary-grid article{padding:15px 17px;border:1px solid $border-color;border-radius:$border-radius-lg;background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(246,250,255,.9));box-shadow:$shadow-sm}.summary-grid span,.summary-grid small{display:block;color:$text-secondary;font-size:12px}.summary-grid strong{display:block;margin:7px 0 4px;color:$text-primary;font-size:24px}.filter-card{margin-bottom:$spacing-md}.filter-card,.table-card{border-radius:$border-radius-lg;border-color:$border-color}.filter-card :deep(.el-form-item){margin-bottom:0}.version-button{display:block;padding:0;border:0;background:none;color:$primary-color;font-weight:700;cursor:pointer}.version-button+small{display:block;margin-top:4px;color:$text-secondary}.download-link{margin:0 8px}@media(max-width:900px){.summary-grid{grid-template-columns:repeat(2,1fr)}}</style>

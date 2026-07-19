@@ -6,6 +6,10 @@
  */
 import request from '@/utils/request'
 
+export function uploadChatImage(formData) {
+  return request.post('/chat/upload', formData, { timeout: 60000 })
+}
+
 /**
  * 获取当前用户的历史会话 ID 列表
  * @returns {Promise<{ sessions: string[], items: Array<{session_id:string,title:string}> }>}

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCameraWs } from '@/utils/cameraWs'
 
 class MockWebSocket {
+  static CONNECTING = 0
   static OPEN = 1
   static instances = []
 
@@ -16,7 +17,9 @@ class MockWebSocket {
     this.sent.push(payload)
   }
 
-  close() {}
+  close() {
+    this.closed = true
+  }
 }
 
 describe('浏览器摄像头 WebSocket', () => {
@@ -43,5 +46,38 @@ describe('浏览器摄像头 WebSocket', () => {
 
     expect(MockWebSocket.instances).toHaveLength(0)
     expect(onError).toHaveBeenCalledWith('登录状态无效，请重新登录')
+  })
+
+  it('连接后原样发送设备、阈值和场景配置', () => {
+    const client = createCameraWs({
+      token: 'camera-token',
+      mode: 'gpu',
+      conf: 0.4,
+      iou: 0.55,
+      sceneId: 7,
+    })
+    client.connect()
+    const socket = MockWebSocket.instances[0]
+    socket.readyState = MockWebSocket.OPEN
+    socket.onopen()
+
+    expect(JSON.parse(socket.sent[0])).toEqual({
+      type: 'config',
+      mode: 'gpu',
+      conf: 0.4,
+      iou: 0.55,
+      scene_id: 7,
+    })
+  })
+
+  it('路由离开时即使仍在连接也会关闭底层 WebSocket', () => {
+    const client = createCameraWs({ token: 'camera-token' })
+    client.connect()
+    const socket = MockWebSocket.instances[0]
+
+    client.close()
+
+    expect(socket.closed).toBe(true)
+    expect(client.isConnected).toBe(false)
   })
 })

@@ -7,7 +7,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 // ── 路由定义 ────────────────────────────────────────
-const routes = [
+export const routes = [
   {
     path: '/login',
     name: 'Login',
@@ -76,11 +76,18 @@ const routes = [
         component: () => import('@/views/SettingsPage.vue'),
         meta: { title: '系统设置', icon: 'Setting' },
       },
+      { path: 'admin', redirect: '/admin/users', meta: { requiresAdmin: true } },
       {
-        path: 'admin',
-        name: 'Admin',
-        component: () => import('@/views/AdminPage.vue'),
-        meta: { title: '系统管理', icon: 'Setting', requiresAdmin: true },
+        path: 'admin/users',
+        name: 'AdminUsers',
+        component: () => import('@/views/AdminUsersPage.vue'),
+        meta: { title: '用户与权限', icon: 'UserFilled', requiresAdmin: true, sidebarKey: '/admin/users' },
+      },
+      {
+        path: 'admin/audit',
+        name: 'AdminAudit',
+        component: () => import('@/views/AdminAuditPage.vue'),
+        meta: { title: '操作审计', icon: 'Tickets', requiresAdmin: true, sidebarKey: '/admin/audit' },
       },
     ],
   },
@@ -99,7 +106,7 @@ const router = createRouter({
 })
 
 // ── 路由守卫 ────────────────────────────────────────
-router.beforeEach(async (to, from, next) => {
+export async function routeGuard(to, from, next) {
   // 设置页面标题
   document.title = to.meta.title
     ? `${to.meta.title} - RSOD Agent Platform`
@@ -130,6 +137,8 @@ router.beforeEach(async (to, from, next) => {
   } else {
     next()
   }
-})
+}
+
+router.beforeEach(routeGuard)
 
 export default router

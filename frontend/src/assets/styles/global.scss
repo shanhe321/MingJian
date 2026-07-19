@@ -6,6 +6,8 @@
 
 :root {
   color-scheme: light;
+  --header-height: #{$header-height};
+  --sidebar-width: #{$sidebar-width};
   --rsod-bg: #{$bg-color};
   --rsod-bg-deep: #{$bg-color-dark};
   --rsod-surface: #{$surface-color};
@@ -61,6 +63,13 @@ body {
     radial-gradient(circle at 50% 0%, rgba(72, 184, 247, 0.08), transparent 18rem),
     linear-gradient(180deg, #f8fbff 0%, #f5f7fc 100%),
     var(--rsod-bg-deep);
+}
+
+button:focus-visible,
+a:focus-visible,
+[role='button']:focus-visible {
+  outline: 2px solid rgba(91, 124, 250, 0.48);
+  outline-offset: 2px;
 }
 
 // ── 页面容器 ────────────────────────────────────────
