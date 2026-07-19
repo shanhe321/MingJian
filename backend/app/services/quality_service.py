@@ -40,6 +40,9 @@ HIGH_RISK = {"short", "open_circuit", "missing_hole"}
 
 def class_name_cn(task: DetectionTask, class_name: str) -> str:
     mapping = task.scene.class_names_cn if task.scene and task.scene.class_names_cn else {}
+    if isinstance(mapping, str):
+        import json
+        mapping = json.loads(mapping)
     return mapping.get(class_name) or PCB_CLASS_NAMES_CN.get(class_name) or class_name
 
 
