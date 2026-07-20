@@ -1,10 +1,9 @@
 <template>
-  <div class="login-page">
-    <div class="login-card">
-      <div class="login-header">
-        <span class="login-logo"><img :src="rsodLogo" alt="PCB 检测标识" /></span>
-        <h2>PCB Defect Detection Platform</h2>
-        <p>基于 YOLOv11 的目标检测智能体平台</p>
+  <AuthLayout>
+    <div class="auth-form">
+      <div class="auth-form__header">
+        <h2>欢迎回来</h2>
+        <p>登录您的账号以继续使用平台</p>
       </div>
 
       <el-form
@@ -37,7 +36,7 @@
         <el-form-item>
           <el-button
             type="primary"
-            class="login-btn"
+            class="auth-form__submit"
             :loading="loading"
             @click="handleLogin"
           >
@@ -46,20 +45,20 @@
         </el-form-item>
       </el-form>
 
-      <div class="login-footer">
+      <div class="auth-form__footer">
         <span>还没有账号？</span>
         <router-link to="/register">立即注册</router-link>
       </div>
     </div>
-  </div>
+  </AuthLayout>
 </template>
 
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import rsodLogo from '@/assets/images/rsod-logo.png'
 import { useUserStore } from '@/stores/user'
+import AuthLayout from '@/components/layout/AuthLayout.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -88,11 +87,13 @@ const loginRules = {
 
 /** 处理登录 */
 async function handleLogin() {
-  const valid = await formRef.value.validate().catch(() => false)
-  if (!valid) return
+  if (loading.value) return
 
   loading.value = true
   try {
+    const valid = await formRef.value.validate().catch(() => false)
+    if (!valid) return
+
     await userStore.login({
       username: loginForm.username,
       password: loginForm.password,
@@ -100,11 +101,11 @@ async function handleLogin() {
 
     ElMessage.success('登录成功')
 
-    // 跳转到目标页面（如果有 redirect 参数）或首页
     const redirect = route.query.redirect || '/'
     router.push(redirect)
-  } catch {
-    // 错误已在 Axios 拦截器中统一处理
+  } catch (error) {
+    // Axios 拦截器已展示后端 detail/message；仅兜底处理非请求异常，避免重复提示。
+    if (!error?.userMessage) ElMessage.error('登录失败，请稍后重试')
   } finally {
     loading.value = false
   }
@@ -112,89 +113,38 @@ async function handleLogin() {
 </script>
 
 <style lang="scss" scoped>
-.login-page {
-  width: 100%;
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  isolation: isolate;
-  background: #f7fbff;
+.auth-form {
+  &__header {
+    margin-bottom: 32px;
 
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background-image:
-      linear-gradient(rgba(59, 130, 246, 0.028) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(56, 189, 248, 0.024) 1px, transparent 1px);
-    background-size: 44px 44px;
-    mask-image: radial-gradient(circle at 50% 8%, rgba(0, 0, 0, 0.55), transparent 62%);
-    z-index: -1;
-  }
-}
+    h2 {
+      font-size: 26px;
+      color: $text-primary;
+      margin-bottom: 8px;
+    }
 
-.login-card {
-  width: 420px;
-  padding: 40px;
-  border: 1px solid $border-color;
-  background: #fff;
-  border-radius: $border-radius-lg;
-  box-shadow: $shadow-lg;
-}
-
-.login-header {
-  text-align: center;
-  margin-bottom: 32px;
-
-  .login-logo {
-    display: inline-grid;
-    place-items: center;
-    width: 48px;
-    height: 48px;
-    overflow: hidden;
-    margin-bottom: 12px;
-    border: 1px solid $border-color;
-    border-radius: 14px;
-
-    img {
-      width: 46px;
-      height: 46px;
-      max-width: none;
-      object-fit: cover;
-      transform: translateX(-3%) scale(1.55);
+    p {
+      font-size: 14px;
+      color: $text-secondary;
     }
   }
 
-  h2 {
-    font-size: 22px;
-    color: $text-primary;
-    margin-bottom: 8px;
+  &__submit {
+    width: 100%;
   }
 
-  p {
+  &__footer {
+    text-align: center;
     font-size: 13px;
     color: $text-secondary;
-  }
-}
 
-.login-btn {
-  width: 100%;
-}
+    a {
+      color: $primary-color;
+      margin-left: 4px;
 
-.login-footer {
-  text-align: center;
-  font-size: 13px;
-  color: $text-secondary;
-
-  a {
-    color: $primary-color;
-    margin-left: 4px;
-
-    &:hover {
-      text-decoration: underline;
+      &:hover {
+        text-decoration: underline;
+      }
     }
   }
 }

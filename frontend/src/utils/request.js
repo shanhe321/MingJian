@@ -8,6 +8,7 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import router from '@/router'
+import { isAuthMockEnabled } from '@/utils/authMock'
 import { getErrorMessage, isLoginRequest } from '@/utils/errorMessages'
 
 // ── 创建 Axios 实例 ──────────────────────────────────
@@ -49,7 +50,7 @@ request.interceptors.response.use(
     error.userMessage = message
     ElMessage.error(message)
 
-    if (error.response?.status === 401 && !isLoginRequest(error)) {
+    if (error.response?.status === 401 && !isLoginRequest(error) && !isAuthMockEnabled()) {
       const userStore = useUserStore()
       userStore.clearSession()
       router.push('/login')

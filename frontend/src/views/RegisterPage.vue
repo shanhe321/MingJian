@@ -1,8 +1,7 @@
 <template>
-  <div class="register-page">
-    <div class="register-card">
-      <div class="register-header">
-        <span class="register-logo"><img :src="rsodLogo" alt="PCB 检测标识" /></span>
+  <AuthLayout>
+    <div class="auth-form">
+      <div class="auth-form__header">
         <h2>创建账号</h2>
         <p>注册后即可使用目标检测智能体平台</p>
       </div>
@@ -55,7 +54,7 @@
         <el-form-item>
           <el-button
             type="primary"
-            class="register-btn"
+            class="auth-form__submit"
             :loading="loading"
             @click="handleRegister"
           >
@@ -64,20 +63,20 @@
         </el-form-item>
       </el-form>
 
-      <div class="register-footer">
+      <div class="auth-form__footer">
         <span>已有账号？</span>
         <router-link to="/login">立即登录</router-link>
       </div>
     </div>
-  </div>
+  </AuthLayout>
 </template>
 
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import rsodLogo from '@/assets/images/rsod-logo.png'
 import { registerApi } from '@/api/auth'
+import AuthLayout from '@/components/layout/AuthLayout.vue'
 
 const router = useRouter()
 const formRef = ref(null)
@@ -122,11 +121,13 @@ const registerRules = {
 
 /** 处理注册 */
 async function handleRegister() {
-  const valid = await formRef.value.validate().catch(() => false)
-  if (!valid) return
+  if (loading.value) return
 
   loading.value = true
   try {
+    const valid = await formRef.value.validate().catch(() => false)
+    if (!valid) return
+
     await registerApi({
       username: registerForm.username,
       email: registerForm.email,
@@ -135,8 +136,9 @@ async function handleRegister() {
 
     ElMessage.success('注册成功，请登录')
     router.push('/login')
-  } catch {
-    // 错误已在 Axios 拦截器中统一处理
+  } catch (error) {
+    // Axios 拦截器已展示后端 detail/message；仅兜底处理非请求异常，避免重复提示。
+    if (!error?.userMessage) ElMessage.error('注册失败，请稍后重试')
   } finally {
     loading.value = false
   }
@@ -144,89 +146,38 @@ async function handleRegister() {
 </script>
 
 <style lang="scss" scoped>
-.register-page {
-  width: 100%;
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  isolation: isolate;
-  background: #f7fbff;
+.auth-form {
+  &__header {
+    margin-bottom: 32px;
 
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background-image:
-      linear-gradient(rgba(59, 130, 246, 0.028) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(56, 189, 248, 0.024) 1px, transparent 1px);
-    background-size: 44px 44px;
-    mask-image: radial-gradient(circle at 50% 8%, rgba(0, 0, 0, 0.55), transparent 62%);
-    z-index: -1;
-  }
-}
+    h2 {
+      font-size: 26px;
+      color: $text-primary;
+      margin-bottom: 8px;
+    }
 
-.register-card {
-  width: 420px;
-  padding: 40px;
-  border: 1px solid $border-color;
-  background: #fff;
-  border-radius: $border-radius-lg;
-  box-shadow: $shadow-lg;
-}
-
-.register-header {
-  text-align: center;
-  margin-bottom: 32px;
-
-  .register-logo {
-    display: inline-grid;
-    place-items: center;
-    width: 48px;
-    height: 48px;
-    overflow: hidden;
-    margin-bottom: 12px;
-    border: 1px solid $border-color;
-    border-radius: 14px;
-
-    img {
-      width: 46px;
-      height: 46px;
-      max-width: none;
-      object-fit: cover;
-      transform: translateX(-3%) scale(1.55);
+    p {
+      font-size: 14px;
+      color: $text-secondary;
     }
   }
 
-  h2 {
-    font-size: 22px;
-    color: $text-primary;
-    margin-bottom: 8px;
+  &__submit {
+    width: 100%;
   }
 
-  p {
+  &__footer {
+    text-align: center;
     font-size: 13px;
     color: $text-secondary;
-  }
-}
 
-.register-btn {
-  width: 100%;
-}
+    a {
+      color: $primary-color;
+      margin-left: 4px;
 
-.register-footer {
-  text-align: center;
-  font-size: 13px;
-  color: $text-secondary;
-
-  a {
-    color: $primary-color;
-    margin-left: 4px;
-
-    &:hover {
-      text-decoration: underline;
+      &:hover {
+        text-decoration: underline;
+      }
     }
   }
 }
