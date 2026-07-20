@@ -1,13 +1,17 @@
 <template>
   <header class="app-header">
+    <router-link class="header-brand" to="/chat" aria-label="RSOD Agent 首页">
+      <span class="brand-logo"><img :src="rsodLogo" alt="" /></span>
+      <span class="brand-name">RSOD Agent</span>
+    </router-link>
     <div class="header-center">
       <ModeSwitcher />
     </div>
-    <span class="header-context">PCB AI WORKSPACE</span>
   </header>
 </template>
 
 <script setup>
+import rsodLogo from '@/assets/images/rsod-logo.png'
 import ModeSwitcher from './ModeSwitcher.vue'
 </script>
 
@@ -17,17 +21,14 @@ import ModeSwitcher from './ModeSwitcher.vue'
   min-height: $header-height;
   flex: 0 0 $header-height;
   box-sizing: border-box;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.92), rgba(248, 251, 255, 0.78)),
-    radial-gradient(circle at 50% 0, rgba(91, 124, 250, 0.08), transparent 36%);
-  border-bottom: 1px solid $border-color;
+  background: #fff;
+  border-bottom: 1px solid #e6eef6;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   position: relative;
   padding: 0 $spacing-lg;
-  box-shadow: 0 10px 30px rgba(40, 58, 96, 0.06);
-  backdrop-filter: blur(20px) saturate(1.12);
+  box-shadow: none;
   z-index: 100;
 }
 
@@ -40,15 +41,39 @@ import ModeSwitcher from './ModeSwitcher.vue'
   transform: translateX(-50%);
 }
 
-.header-context {
-  color: $text-placeholder;
-  font-size: 9px;
+.header-brand {
+  position: absolute;
+  left: $spacing-lg;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: $text-primary;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  text-decoration: none;
+
+  .brand-logo {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    overflow: hidden;
+    border: 1px solid $border-color;
+    border-radius: 10px;
+    background: #fff;
+
+    img {
+      width: 32px;
+      height: 32px;
+      max-width: none;
+      object-fit: cover;
+      transform: translateX(-3%) scale(1.55);
+    }
+  }
 }
 
 @media (max-width: 560px) {
-  .header-context {
+  .brand-name {
     display: none;
   }
 }

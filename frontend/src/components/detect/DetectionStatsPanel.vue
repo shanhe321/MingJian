@@ -43,9 +43,9 @@ const items = computed(() => [
   gap: 9px;
   min-height: 62px;
   padding: 8px 9px;
-  border: 1px solid rgba(207, 216, 230, 0.62);
+  border: 0;
   border-radius: 12px;
-  background: rgba(248, 250, 255, 0.78);
+  background: #f5f7fa;
   box-sizing: border-box;
 }
 
@@ -55,7 +55,7 @@ const items = computed(() => [
   width: 29px;
   height: 29px;
   border-radius: 10px;
-  background: linear-gradient(135deg, rgba(91, 124, 250, 0.12), rgba(139, 92, 246, 0.08));
+  background: #eef7ff;
   color: $primary-color;
   flex: 0 0 auto;
 }
@@ -77,7 +77,7 @@ const items = computed(() => [
   small {
     margin-top: 2px;
     color: $text-secondary;
-    font-size: 9px;
+    font-size: 13px;
   }
 }
 </style>

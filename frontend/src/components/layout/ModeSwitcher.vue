@@ -44,18 +44,15 @@ function go(path) {
   padding: 3px;
   border: 1px solid rgba(207, 216, 230, 0.92);
   border-radius: 999px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(239, 244, 252, 0.72));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    0 10px 24px rgba(40, 58, 96, 0.08);
+  background: #fff;
+  box-shadow: none;
   user-select: none;
 }
 
 .mode-button {
   min-width: 84px;
   height: 34px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 999px;
   background: transparent;
   color: $text-secondary;
@@ -66,7 +63,7 @@ function go(path) {
   transition:
     background 0.18s ease,
     color 0.18s ease,
-    box-shadow 0.18s ease;
+    border-color 0.18s ease;
 
   &:hover,
   &:focus-visible {
@@ -75,17 +72,14 @@ function go(path) {
   }
 
   &:focus-visible {
-    box-shadow: 0 0 0 2px rgba(91, 124, 250, 0.18);
+    border-color: $border-color-strong;
   }
 
   &.is-active {
-    background:
-      linear-gradient(135deg, rgba(91, 124, 250, 0.14), rgba(139, 92, 246, 0.12)),
-      #fff;
+    background: #eaf4ff;
+    border-color: #bfd8f4;
     color: $primary-color-dark;
-    box-shadow:
-      inset 0 0 0 1px rgba(91, 124, 250, 0.18),
-      0 8px 22px rgba(91, 124, 250, 0.12);
+    box-shadow: none;
   }
 }
 </style>

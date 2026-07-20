@@ -14,4 +14,10 @@ describe("AppHeader 组件", () => {
     const module = await import("@/components/layout/AppHeader.vue");
     expect(module.default).toBeDefined();
   });
+
+  it("不再渲染旧工作区文案或右侧占位", async () => {
+    const source = await import("@/components/layout/AppHeader.vue?raw");
+    expect(source.default).not.toContain("PCB AI WORKSPACE");
+    expect(source.default).not.toContain("header-context");
+  });
 });

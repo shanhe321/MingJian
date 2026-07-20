@@ -9,17 +9,33 @@
     </PageHeader>
 
     <!-- ── 训练任务列表 ── -->
-    <section class="training-overview" aria-label="训练任务概览">
+    <section v-if="tasksState === 'success' || tasksState === 'empty'" class="training-overview" aria-label="训练任务概览">
       <div v-for="item in taskOverviewCards" :key="item.label" class="overview-item">
         <span>{{ item.label }}</span>
         <strong>{{ item.value }}</strong>
       </div>
     </section>
 
-    <TrainingTaskTable :tasks="taskList" :scenes="scenes" :loading="loadingTasks" @refresh="fetchTasks" @select="selectTask" @stop="stopTask" />
+    <TrainingTaskTable
+      :tasks="taskList"
+      :scenes="scenes"
+      :loading="loadingTasks"
+      :state="tasksState"
+      :error="tasksError"
+      @refresh="fetchTasks"
+      @select="selectTask"
+      @stop="stopTask"
+    />
 
     <!-- ── 训练监控面板 ── -->
-    <TrainingMonitor :task="selectedTask" :metrics="metricCards">
+    <AsyncState
+      v-if="selectedTask && statusState !== 'success'"
+      :state="statusState"
+      :message="statusError"
+      compact
+      @retry="fetchStatus"
+    />
+    <TrainingMonitor v-else :task="selectedTask" :metrics="metricCards">
       <template #loss-chart><div ref="lossChartRef" style="height:350px"></div></template>
       <template #map-chart><div ref="mapChartRef" style="height:350px"></div></template>
     </TrainingMonitor>
@@ -74,7 +90,16 @@
       width="600px"
       :close-on-click-modal="false"
     >
-      <el-form :model="trainForm" label-width="120px">
+      <AsyncState
+        v-if="optionsState !== 'success'"
+        :state="optionsState"
+        :message="optionsError"
+        empty-text="暂无可用的场景或数据集"
+        compact
+        @retry="fetchTrainingOptions"
+      />
+
+      <el-form v-else :model="trainForm" label-width="120px">
         <el-form-item label="检测场景">
           <el-select v-model="trainForm.scene_id" placeholder="选择场景" style="width: 100%">
             <el-option
@@ -159,7 +184,12 @@
 
       <template #footer>
         <el-button @click="showCreateDialog = false">取消</el-button>
-        <el-button type="primary" @click="createTask" :loading="creating">
+        <el-button
+          type="primary"
+          :disabled="optionsState !== 'success'"
+          :loading="creating"
+          @click="createTask"
+        >
           启动训练
         </el-button>
       </template>
@@ -286,16 +316,24 @@ import TrainingTaskTable from '@/components/training/TrainingTaskTable.vue'
 import TrainingMonitor from '@/components/training/TrainingMonitor.vue'
 import EvaluationPanel from '@/components/training/EvaluationPanel.vue'
 import ModelExportDialog from '@/components/training/ModelExportDialog.vue'
+import AsyncState from '@/components/common/AsyncState.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import { getErrorMessage } from '@/utils/errorMessages'
 
 const userStore = useUserStore()
 
 // ── 状态变量 ──
 const taskList = ref([])
 const loadingTasks = ref(false)
+const tasksState = ref('loading')
+const tasksError = ref('')
 const selectedTask = ref(null)
+const statusState = ref('success')
+const statusError = ref('')
 const datasets = ref([])
 const scenes = ref([])
+const optionsState = ref('loading')
+const optionsError = ref('')
 const showCreateDialog = ref(false)
 const creating = ref(false)
 
@@ -369,11 +407,19 @@ watch(() => trainForm.value.scene_id, () => {
 })
 
 async function fetchTrainingOptions() {
-  const [sceneRes, datasetRes] = await Promise.all([getScenes(), getDatasets()])
-  scenes.value = sceneRes.items || []
-  datasets.value = datasetRes.items || []
-  if (!trainForm.value.scene_id && scenes.value.length) {
-    trainForm.value.scene_id = scenes.value[0].id
+  optionsState.value = 'loading'
+  optionsError.value = ''
+  try {
+    const [sceneRes, datasetRes] = await Promise.all([getScenes(), getDatasets()])
+    scenes.value = sceneRes.items || []
+    datasets.value = datasetRes.items || []
+    optionsState.value = scenes.value.length ? 'success' : 'empty'
+    if (!trainForm.value.scene_id && scenes.value.length) {
+      trainForm.value.scene_id = scenes.value[0].id
+    }
+  } catch (error) {
+    optionsState.value = 'error'
+    optionsError.value = getErrorMessage(error)
   }
 }
 
@@ -462,13 +508,17 @@ function statusText(status) {
 // ── 获取任务列表 ──
 async function fetchTasks() {
   loadingTasks.value = true
+  tasksState.value = 'loading'
+  tasksError.value = ''
   try {
     // 注意：request 拦截器已经把响应解包为 response.data，这里拿到的就是接口返回体本身
     // 后端 GET /api/training/tasks 返回 { total, items }
     const res = await getTrainingTasks()
     taskList.value = res?.items || []
+    tasksState.value = taskList.value.length ? 'success' : 'empty'
   } catch (e) {
-    console.error('获取任务列表失败', e)
+    tasksState.value = 'error'
+    tasksError.value = getErrorMessage(e)
   } finally {
     loadingTasks.value = false
   }
@@ -489,6 +539,8 @@ async function selectTask(task) {
   selectedTask.value = task
   evalReport.value = null
   taskMetrics.value = []
+  statusState.value = 'loading'
+  statusError.value = ''
   resetPredictState()
   await nextTick()
   initCharts()
@@ -542,8 +594,12 @@ async function fetchStatus() {
     ) {
       stopPolling()
     }
+    statusState.value = 'success'
+    statusError.value = ''
   } catch (e) {
-    console.error('获取训练状态失败', e)
+    statusState.value = 'error'
+    statusError.value = getErrorMessage(e)
+    stopPolling()
   }
 }
 
@@ -603,24 +659,24 @@ function updateCharts(metrics) {
           type: 'line',
           data: metrics.map((m) => m.map50),
           smooth: true,
-          lineStyle: { width: 2, color: '#5b7cfa' },
-          itemStyle: { color: '#5b7cfa' },
+        lineStyle: { width: 2, color: '#3b82f6' },
+        itemStyle: { color: '#3b82f6' },
         },
         {
           name: 'mAP@50-95',
           type: 'line',
           data: metrics.map((m) => m.map50_95),
           smooth: true,
-          lineStyle: { width: 2, color: '#8b5cf6' },
-          itemStyle: { color: '#8b5cf6' },
+        lineStyle: { width: 2, color: '#38bdf8' },
+        itemStyle: { color: '#38bdf8' },
         },
         {
           name: 'Precision',
           type: 'line',
           data: metrics.map((m) => m.precision),
           smooth: true,
-          lineStyle: { width: 2, type: 'dashed', color: '#48b8f7' },
-          itemStyle: { color: '#48b8f7' },
+        lineStyle: { width: 2, type: 'dashed', color: '#0ea5e9' },
+        itemStyle: { color: '#0ea5e9' },
         },
         {
           name: 'Recall',
@@ -850,8 +906,7 @@ onBeforeUnmount(() => {
   padding: 14px 16px;
   border: 1px solid $border-color;
   border-radius: $border-radius-lg;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.86));
+  background: #fff;
   box-shadow:
     $shadow-sm,
     inset 0 1px 0 rgba(255, 255, 255, 0.96);
@@ -892,9 +947,7 @@ onBeforeUnmount(() => {
   text-align: center;
   padding: 8px 0;
   border-radius: $border-radius-md;
-  background:
-    radial-gradient(circle at 80% 0, rgba(91, 124, 250, 0.08), transparent 38%),
-    $surface-color-soft;
+  background: $surface-color-soft;
 
   :deep(.el-card__body) {
     padding: 16px 12px;
@@ -919,8 +972,7 @@ onBeforeUnmount(() => {
 .eval-card {
   margin-bottom: 20px;
   border-radius: $border-radius-lg;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.88));
+  background: #fff;
   border-color: $border-color;
   box-shadow:
     $shadow-sm,
@@ -930,7 +982,7 @@ onBeforeUnmount(() => {
 .task-list-card :deep(.el-table) {
   --el-table-header-bg-color: transparent;
   --el-table-tr-bg-color: transparent;
-  --el-table-row-hover-bg-color: rgba(91, 124, 250, 0.06);
+  --el-table-row-hover-bg-color: #f4f9ff;
 }
 
 .task-list-card :deep(.el-table__empty-block) {

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
-const { logoutApi } = vi.hoisted(() => ({ logoutApi: vi.fn() }))
+const { getUserInfoApi, logoutApi } = vi.hoisted(() => ({ getUserInfoApi: vi.fn(), logoutApi: vi.fn() }))
 vi.mock('@/api/auth', () => ({
-  getUserInfoApi: vi.fn(),
+  getUserInfoApi,
   loginApi: vi.fn(),
   logoutApi,
 }))
@@ -14,6 +14,7 @@ describe('用户 Store 安全退出与角色', () => {
   beforeEach(() => {
     localStorage.clear()
     logoutApi.mockReset()
+    getUserInfoApi.mockReset()
     setActivePinia(createPinia())
   })
 
@@ -31,5 +32,17 @@ describe('用户 Store 安全退出与角色', () => {
     const store = useUserStore()
     store.user = { roles: ['user', 'admin'], is_superuser: false }
     expect(store.isSuperuser).toBe(true)
+  })
+
+  it('用户信息刷新遇到非鉴权错误时保留本地会话', async () => {
+    getUserInfoApi.mockRejectedValue(new Error('service unavailable'))
+    const store = useUserStore()
+    store.token = 'valid-token'
+    store.user = { id: 1, roles: ['user'] }
+
+    await store.fetchUserInfo()
+
+    expect(store.token).toBe('valid-token')
+    expect(store.user).toEqual({ id: 1, roles: ['user'] })
   })
 })
