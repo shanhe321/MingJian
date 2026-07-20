@@ -1,6 +1,6 @@
 <template>
   <div class="training-page">
-    <PageHeader title="模型训练" description="创建训练任务、监控指标，并评估与导出模型产物。" eyebrow="AI Training">
+    <PageHeader title="模型训练" description="创建训练任务、监控指标，并评估与导出模型产物。">
       <template #actions>
         <el-button type="primary" @click="showCreateDialog = true">
           <el-icon><Plus /></el-icon>新建训练任务
@@ -830,17 +830,6 @@ onBeforeUnmount(() => {
   font-size: 26px;
   color: $text-primary;
   font-weight: 650;
-  position: relative;
-
-  &::after {
-    content: "";
-    display: block;
-    width: 74px;
-    height: 3px;
-    margin-top: 10px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, $primary-color, $primary-color-light, #48b8f7);
-  }
 }
 
 .page-title-copy p {

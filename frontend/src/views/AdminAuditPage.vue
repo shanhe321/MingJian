@@ -1,6 +1,6 @@
 <template>
   <div class="audit-page">
-    <PageHeader title="操作审计" description="按操作者、模块、动作和结果追踪系统关键操作。" eyebrow="Administration"><template #actions><el-button :loading="loading" @click="load">刷新</el-button></template></PageHeader>
+    <PageHeader title="操作审计" description="按操作者、模块、动作和结果追踪系统关键操作。"><template #actions><el-button :loading="loading" @click="load">刷新</el-button></template></PageHeader>
     <el-card shadow="never" class="filter-card"><el-form inline @submit.prevent="search">
       <el-form-item label="用户 ID"><el-input-number v-model="filters.user_id" :min="1" controls-position="right" /></el-form-item>
       <el-form-item label="模块"><el-input v-model="filters.module" clearable placeholder="如 detection" /></el-form-item>

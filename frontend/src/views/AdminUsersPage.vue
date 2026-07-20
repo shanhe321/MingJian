@@ -1,6 +1,6 @@
 <template>
   <div class="admin-users-page">
-    <PageHeader title="用户与权限" description="管理账号状态和角色授权，所有变更均写入操作审计。" eyebrow="Administration">
+    <PageHeader title="用户与权限" description="管理账号状态和角色授权，所有变更均写入操作审计。">
       <template #actions><el-button :loading="loading" @click="loadUsers">刷新</el-button></template>
     </PageHeader>
 

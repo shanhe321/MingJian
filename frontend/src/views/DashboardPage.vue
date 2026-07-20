@@ -1,6 +1,6 @@
 <template>
   <div class="dashboard-page">
-    <PageHeader title="数据看板" description="洞察检测任务、质量结果、目标类别与系统趋势。" eyebrow="Analytics">
+    <PageHeader title="数据看板" description="洞察检测任务、质量结果、目标类别与系统趋势。">
       <template #actions>
         <div class="dashboard-controls">
         <el-radio-group v-if="userStore.isSuperuser" v-model="scope" @change="loadAllData" style="margin-right: 12px">
@@ -509,17 +509,6 @@ onBeforeUnmount(() => {
   color: $text-primary;
   font-size: 26px;
   font-weight: 650;
-  position: relative;
-
-  &::after {
-    content: "";
-    display: block;
-    width: 74px;
-    height: 3px;
-    margin-top: 10px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, $primary-color, $primary-color-light, #48b8f7);
-  }
 }
 
 .page-title-copy p {

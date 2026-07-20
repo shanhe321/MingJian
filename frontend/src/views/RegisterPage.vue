@@ -149,7 +149,27 @@ async function handleRegister() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 72% 5%, rgba(91, 124, 250, 0.16), transparent 34rem),
+    radial-gradient(circle at 18% 10%, rgba(139, 92, 246, 0.11), transparent 28rem),
+    radial-gradient(circle at 52% 0, rgba(72, 184, 247, 0.08), transparent 22rem),
+    linear-gradient(180deg, #f8fbff 0%, #f5f7fc 100%),
+    $bg-color;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(91, 124, 250, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(91, 124, 250, 0.028) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(circle at 50% 8%, rgba(0, 0, 0, 0.55), transparent 62%);
+    z-index: -1;
+  }
 }
 
 .register-card {

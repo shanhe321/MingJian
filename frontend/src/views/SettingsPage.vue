@@ -1,6 +1,6 @@
 <template>
   <div class="settings-page">
-    <PageHeader title="系统设置" description="管理个人资料、账户安全和平台信息。" eyebrow="Preferences" />
+    <PageHeader title="系统设置" description="管理个人资料、账户安全和平台信息。" />
 
     <el-row :gutter="24">
       <!-- 个人信息 -->
@@ -254,17 +254,6 @@ onMounted(() => {
     color: $text-primary;
     font-size: 26px;
     font-weight: 650;
-    position: relative;
-
-    &::after {
-      content: "";
-      display: block;
-      width: 74px;
-      height: 3px;
-      margin-top: 10px;
-      border-radius: 999px;
-      background: linear-gradient(90deg, $primary-color, $primary-color-light, #48b8f7);
-    }
   }
 
   .page-title-copy p {

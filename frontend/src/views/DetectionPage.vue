@@ -1,7 +1,6 @@
 <template>
   <div class="detection-page">
     <PageHeader
-      eyebrow="REAL-TIME DETECTION"
       title="实时检测工作台"
       description="使用摄像头进行实时 PCB 缺陷检测，目标、帧率与推理状态同步更新。"
     >
@@ -36,19 +35,8 @@ import PageHeader from '@/components/common/PageHeader.vue'
     margin-bottom: 10px;
   }
 
-  :deep(.page-eyebrow) {
-    margin-bottom: 3px;
-    font-size: 9px;
-  }
-
   :deep(.page-header h1) {
     font-size: 22px;
-  }
-
-  :deep(.page-header h1::after) {
-    width: 54px;
-    height: 2px;
-    margin-top: 6px;
   }
 
   :deep(.page-description) {

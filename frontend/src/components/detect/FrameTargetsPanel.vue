@@ -2,7 +2,6 @@
   <section class="targets-panel">
     <header>
       <div>
-        <span class="eyebrow">LIVE TARGETS</span>
         <h2>当前帧目标</h2>
       </div>
       <span class="target-count">{{ detections.length }}</span>
@@ -62,15 +61,8 @@ header {
   margin-bottom: 7px;
 }
 
-.eyebrow {
-  color: $primary-color;
-  font-size: 8px;
-  font-weight: 750;
-  letter-spacing: 0.14em;
-}
-
 h2 {
-  margin: 3px 0 0;
+  margin: 0;
   color: $text-primary;
   font-size: 14px;
 }

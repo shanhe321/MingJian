@@ -2,7 +2,6 @@
   <section class="control-panel">
     <header class="panel-heading">
       <div>
-        <span class="eyebrow">CAMERA CONTROL</span>
         <h2>实时控制</h2>
       </div>
       <span class="status-pill" :class="statusClass">
@@ -156,15 +155,8 @@ const statusClass = computed(() => {
   margin-bottom: 9px;
 }
 
-.eyebrow {
-  color: $primary-color;
-  font-size: 9px;
-  font-weight: 750;
-  letter-spacing: 0.14em;
-}
-
 h2 {
-  margin: 3px 0 0;
+  margin: 0;
   color: $text-primary;
   font-size: 16px;
 }
