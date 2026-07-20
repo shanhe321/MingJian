@@ -1,8 +1,7 @@
 <template>
-  <div class="register-page">
-    <div class="register-card">
-      <div class="register-header">
-        <img src="/favicon.svg" alt="logo" class="register-logo" />
+  <AuthLayout>
+    <div class="auth-form">
+      <div class="auth-form__header">
         <h2>创建账号</h2>
         <p>注册后即可使用目标检测智能体平台</p>
       </div>
@@ -55,7 +54,7 @@
         <el-form-item>
           <el-button
             type="primary"
-            class="register-btn"
+            class="auth-form__submit"
             :loading="loading"
             @click="handleRegister"
           >
@@ -64,12 +63,12 @@
         </el-form-item>
       </el-form>
 
-      <div class="register-footer">
+      <div class="auth-form__footer">
         <span>已有账号？</span>
         <router-link to="/login">立即登录</router-link>
       </div>
     </div>
-  </div>
+  </AuthLayout>
 </template>
 
 <script setup>
@@ -77,6 +76,7 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { registerApi } from '@/api/auth'
+import AuthLayout from '@/components/layout/AuthLayout.vue'
 
 const router = useRouter()
 const formRef = ref(null)
@@ -143,80 +143,38 @@ async function handleRegister() {
 </script>
 
 <style lang="scss" scoped>
-.register-page {
-  width: 100%;
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  isolation: isolate;
-  background:
-    radial-gradient(circle at 72% 5%, rgba(91, 124, 250, 0.16), transparent 34rem),
-    radial-gradient(circle at 18% 10%, rgba(139, 92, 246, 0.11), transparent 28rem),
-    radial-gradient(circle at 52% 0, rgba(72, 184, 247, 0.08), transparent 22rem),
-    linear-gradient(180deg, #f8fbff 0%, #f5f7fc 100%),
-    $bg-color;
+.auth-form {
+  &__header {
+    margin-bottom: 32px;
 
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background-image:
-      linear-gradient(rgba(91, 124, 250, 0.035) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(91, 124, 250, 0.028) 1px, transparent 1px);
-    background-size: 44px 44px;
-    mask-image: radial-gradient(circle at 50% 8%, rgba(0, 0, 0, 0.55), transparent 62%);
-    z-index: -1;
-  }
-}
+    h2 {
+      font-size: 26px;
+      color: $text-primary;
+      margin-bottom: 8px;
+    }
 
-.register-card {
-  width: 420px;
-  padding: 40px;
-  background: #fff;
-  border-radius: $border-radius-lg;
-  box-shadow: $shadow-lg;
-}
-
-.register-header {
-  text-align: center;
-  margin-bottom: 32px;
-
-  .register-logo {
-    width: 48px;
-    height: 48px;
-    margin-bottom: 12px;
+    p {
+      font-size: 14px;
+      color: $text-secondary;
+    }
   }
 
-  h2 {
-    font-size: 22px;
-    color: $text-primary;
-    margin-bottom: 8px;
+  &__submit {
+    width: 100%;
   }
 
-  p {
+  &__footer {
+    text-align: center;
     font-size: 13px;
     color: $text-secondary;
-  }
-}
 
-.register-btn {
-  width: 100%;
-}
+    a {
+      color: $primary-color;
+      margin-left: 4px;
 
-.register-footer {
-  text-align: center;
-  font-size: 13px;
-  color: $text-secondary;
-
-  a {
-    color: $primary-color;
-    margin-left: 4px;
-
-    &:hover {
-      text-decoration: underline;
+      &:hover {
+        text-decoration: underline;
+      }
     }
   }
 }

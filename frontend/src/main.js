@@ -20,6 +20,14 @@ import router from './router'
 import pinia from './stores'
 
 import { setupErrorReporting } from "@/utils/errorReporter";
+import { ensureMockSession, isAuthMockEnabled } from "@/utils/authMock";
+
+// 开发态假登录：无后端时自动注入管理员会话，便于调 UI
+if (ensureMockSession()) {
+  console.info("[auth-mock] 已注入开发态管理员会话（VITE_AUTH_MOCK=true）");
+} else if (isAuthMockEnabled()) {
+  console.info("[auth-mock] 开发态假登录已启用");
+}
 
 // ── 创建并配置应用 ────────────────────────────────────
 const app = createApp(App)

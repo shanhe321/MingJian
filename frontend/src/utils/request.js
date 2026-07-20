@@ -8,6 +8,7 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import router from '@/router'
+import { isAuthMockEnabled } from '@/utils/authMock'
 
 // ── 创建 Axios 实例 ──────────────────────────────────
 const request = axios.create({
@@ -49,6 +50,9 @@ request.interceptors.response.use(
     if (response) {
       switch (response.status) {
         case 401:
+          // 开发态假登录：忽略 401，避免无后端联调时被踢回登录页
+          if (isAuthMockEnabled()) break
+
           // Token 过期或无效，清除用户信息并跳转登录页
           ElMessage.error('登录已过期，请重新登录')
           const userStore = useUserStore()

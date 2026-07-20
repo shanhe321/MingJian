@@ -5,9 +5,21 @@ import { useUserStore } from '@/stores/user'
 import request from '@/utils/request'
 import router from '@/router'
 
+const { isAuthMockEnabled } = vi.hoisted(() => ({
+  isAuthMockEnabled: vi.fn(() => false),
+}))
+vi.mock('@/utils/authMock', async () => {
+  const actual = await vi.importActual('@/utils/authMock')
+  return {
+    ...actual,
+    isAuthMockEnabled,
+  }
+})
+
 describe('请求鉴权与错误拦截', () => {
   beforeEach(() => {
     localStorage.clear()
+    isAuthMockEnabled.mockReturnValue(false)
     setActivePinia(createPinia())
   })
 
@@ -31,6 +43,21 @@ describe('请求鉴权与错误拦截', () => {
     expect(store.token).toBe('')
     expect(store.user).toBeNull()
     expect(pushSpy).toHaveBeenCalledWith('/login')
+    pushSpy.mockRestore()
+  })
+
+  it('auth mock 开启时 401 不清理会话', async () => {
+    isAuthMockEnabled.mockReturnValue(true)
+    const store = useUserStore()
+    store.token = 'dev-mock-token'
+    store.user = { id: 1, roles: ['admin'], is_superuser: true }
+    const pushSpy = vi.spyOn(router, 'push').mockResolvedValue()
+    const handler = request.interceptors.response.handlers[0].rejected
+    const error = { response: { status: 401, data: { detail: 'expired' } } }
+    await expect(handler(error)).rejects.toBe(error)
+    expect(store.token).toBe('dev-mock-token')
+    expect(store.user).not.toBeNull()
+    expect(pushSpy).not.toHaveBeenCalled()
     pushSpy.mockRestore()
   })
 })
