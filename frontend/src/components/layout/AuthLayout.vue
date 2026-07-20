@@ -1,10 +1,14 @@
+<script setup>
+import rsodLogo from '@/assets/images/rsod-logo.png'
+</script>
+
 <template>
   <div class="auth-layout">
     <aside class="auth-visual">
       <img src="/teaser.png" alt="PCB 缺陷检测平台" class="auth-visual__image" />
       <div class="auth-visual__overlay">
         <div class="auth-visual__content">
-          <img src="/favicon.svg" alt="logo" class="auth-visual__logo" />
+          <img :src="rsodLogo" alt="logo" class="auth-visual__logo" />
           <h1>PCB Defect Detection Platform</h1>
           <p>基于 YOLOv11 的目标检测智能体平台</p>
         </div>
