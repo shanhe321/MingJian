@@ -124,24 +124,21 @@ async function handleCommand(command) {
   &:hover,
   &:focus-visible {
     border-color: $border-color-strong;
-    background: rgba(91, 124, 250, 0.08);
+    background: #f0f7ff;
     transform: translateY(-1px);
     outline: none;
   }
 
   &:focus-visible {
-    box-shadow: 0 0 0 2px rgba(91, 124, 250, 0.18);
+    box-shadow: none;
   }
 }
 
 .letter-avatar {
   --el-avatar-bg-color: transparent;
-  background: linear-gradient(135deg, #5b7cfa 0%, #8b5cf6 100%);
+  background: #3b82f6;
   color: #fff;
   font-weight: 700;
-  box-shadow:
-    0 10px 22px rgba(91, 124, 250, 0.26),
-    0 0 0 3px rgba(255, 255, 255, 0.86),
-    0 0 0 4px rgba(91, 124, 250, 0.16);
+  box-shadow: none;
 }
 </style>

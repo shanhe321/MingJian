@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AxiosHeaders } from 'axios'
 import { createPinia, setActivePinia } from 'pinia'
+import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import request from '@/utils/request'
 import router from '@/router'
@@ -18,6 +19,7 @@ vi.mock('@/utils/authMock', async () => {
 
 describe('请求鉴权与错误拦截', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     localStorage.clear()
     isAuthMockEnabled.mockReturnValue(false)
     setActivePinia(createPinia())
@@ -59,5 +61,40 @@ describe('请求鉴权与错误拦截', () => {
     expect(store.user).not.toBeNull()
     expect(pushSpy).not.toHaveBeenCalled()
     pushSpy.mockRestore()
+  })
+
+  it('登录接口 401 提示用户名或密码错误且不清理已有会话', async () => {
+    const store = useUserStore()
+    store.token = 'existing-token'
+    store.user = { id: 1, roles: ['user'] }
+    const pushSpy = vi.spyOn(router, 'push').mockResolvedValue()
+    const handler = request.interceptors.response.handlers[0].rejected
+    const error = {
+      config: { url: '/auth/login' },
+      response: { status: 401, data: { detail: 'Unauthorized' } },
+    }
+
+    await expect(handler(error)).rejects.toBe(error)
+    expect(error.userMessage).toBe('用户名或密码错误')
+    expect(ElMessage.error).toHaveBeenCalledWith('用户名或密码错误')
+    expect(store.token).toBe('existing-token')
+    expect(store.user).toEqual({ id: 1, roles: ['user'] })
+    expect(pushSpy).not.toHaveBeenCalled()
+    pushSpy.mockRestore()
+  })
+
+  it('403 优先显示后端停用提示且保留登录状态', async () => {
+    const store = useUserStore()
+    store.token = 'valid-token'
+    const handler = request.interceptors.response.handlers[0].rejected
+    const error = {
+      config: { url: '/auth/me' },
+      response: { status: 403, data: { detail: '用户已停用，请联系管理员' } },
+    }
+
+    await expect(handler(error)).rejects.toBe(error)
+    expect(error.userMessage).toBe('用户已停用，请联系管理员')
+    expect(ElMessage.error).toHaveBeenCalledWith('用户已停用，请联系管理员')
+    expect(store.token).toBe('valid-token')
   })
 })

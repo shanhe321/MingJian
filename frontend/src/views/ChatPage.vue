@@ -996,9 +996,9 @@ onBeforeUnmount(() => {
 }
 
 .user-bubble {
-  background: rgba(232, 237, 247, 0.84);
+  background: #f3f4f6;
   color: $text-primary;
-  border: 1px solid rgba(199, 210, 228, 0.6);
+  border: 0;
   border-bottom-right-radius: 6px;
 }
 
@@ -1018,13 +1018,12 @@ onBeforeUnmount(() => {
 }
 
 .assistant-bubble {
-  background: rgba(255, 255, 255, 0.58);
-  border: 1px solid rgba(218, 226, 238, 0.62);
+  background: transparent;
+  border: 0;
   color: $text-regular;
   border-bottom-left-radius: 6px;
 
   &.is-error {
-    border-color: rgba(220, 90, 90, 0.3);
     background: rgba(254, 242, 242, 0.9);
   }
 }
@@ -1102,11 +1101,11 @@ onBeforeUnmount(() => {
 /* ── 工具调用可视化 ── */
 .tool-calls {
   margin-top: $spacing-sm;
-  padding: $spacing-xs $spacing-sm;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(241, 245, 251, 0.72));
+  padding: 8px 10px;
+  background: #f3f4f6;
   border-radius: $border-radius-sm;
-  border: 1px solid $border-color;
+  border: 0;
+  box-shadow: none;
 }
 
 .tool-call-item {
@@ -1158,7 +1157,7 @@ onBeforeUnmount(() => {
   margin-top: $spacing-sm;
   padding: 4px $spacing-sm;
   border-radius: $border-radius-sm;
-  font-size: 12px;
+  font-size: 13px;
   width: fit-content;
 
   &.success {
@@ -1218,7 +1217,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(91, 124, 250, 0.08);
+  background: rgba(59, 130, 246, 0.08);
   border: 2px dashed $primary-color;
   pointer-events: none;
   z-index: 10;

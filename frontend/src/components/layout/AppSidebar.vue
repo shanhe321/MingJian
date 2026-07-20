@@ -2,7 +2,7 @@
   <aside class="app-sidebar" aria-label="主导航">
     <div class="sidebar-rail">
       <router-link class="brand-mark" to="/chat" aria-label="RSOD 智能检测平台">
-        <img src="/favicon.svg" alt="" />
+        <img :src="rsodLogo" alt="" />
       </router-link>
 
       <div class="chat-actions" aria-label="Chat 会话操作">
@@ -71,6 +71,7 @@ import {
   UserFilled,
 } from '@element-plus/icons-vue'
 import UserAvatarMenu from './UserAvatarMenu.vue'
+import rsodLogo from '@/assets/images/rsod-logo.png'
 import { useAgentStore } from '@/stores/agent'
 import { useUserStore } from '@/stores/user'
 import { getSidebarItems } from '@/utils/navigation'
@@ -114,7 +115,7 @@ function toggleSessions() {
   display: flex;
   flex: 0 0 auto;
   overflow: hidden;
-  background: rgba(249, 251, 255, 0.94);
+  background: #fff;
   z-index: 80;
   box-sizing: border-box;
 }
@@ -124,13 +125,11 @@ function toggleSessions() {
   min-width: $sidebar-width;
   height: 100%;
   border-right: 1px solid $border-color;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(246, 249, 255, 0.82)),
-    $sidebar-bg;
+  background: $sidebar-bg;
   display: flex;
   flex-direction: column;
   align-items: center;
-  box-shadow: 8px 0 28px rgba(40, 58, 96, 0.035);
+  box-shadow: 6px 0 20px rgba(37, 99, 235, 0.035);
   z-index: 1;
 }
 
@@ -141,13 +140,17 @@ function toggleSessions() {
   height: 42px;
   margin-top: 12px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 8px 22px rgba(91, 124, 250, 0.11);
+  border: 1px solid $border-color;
+  background: #fff;
+  box-shadow: none;
+  overflow: hidden;
 
   img {
-    width: 27px;
-    height: 27px;
-    border-radius: 8px;
+    width: 40px;
+    height: 40px;
+    max-width: none;
+    object-fit: cover;
+    transform: translateX(-3%) scale(1.55);
   }
 }
 
@@ -194,19 +197,19 @@ function toggleSessions() {
 
   &:hover,
   &:focus-visible {
-    background: rgba(91, 124, 250, 0.08);
+    background: #f0f7ff;
     color: $text-primary;
     transform: translateY(-1px);
   }
 
   &:focus-visible {
     border-color: $border-color-strong;
-    box-shadow: 0 0 0 2px rgba(91, 124, 250, 0.14);
+    box-shadow: none;
   }
 
   &.is-active {
-    border-color: rgba(91, 124, 250, 0.18);
-    background: linear-gradient(135deg, rgba(91, 124, 250, 0.15), rgba(139, 92, 246, 0.1));
+    border-color: rgba(59, 130, 246, 0.2);
+    background: #eaf4ff;
     color: $primary-color-dark;
   }
 }

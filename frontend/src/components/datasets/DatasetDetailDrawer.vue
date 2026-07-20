@@ -1,6 +1,8 @@
 <template>
   <el-drawer :model-value="modelValue" title="数据集详情" size="min(760px, 92vw)" @update:model-value="$emit('update:modelValue',$event)">
-    <div v-loading="loading">
+    <AsyncState v-if="loading" state="loading" compact />
+    <AsyncState v-else-if="error" state="error" :message="error" compact @retry="$emit('retry')" />
+    <div v-else>
       <DatasetValidationResult :result="validationResult"/>
       <el-descriptions v-if="dataset" :column="2" border>
         <el-descriptions-item label="名称">{{ dataset.name }}</el-descriptions-item><el-descriptions-item label="场景">{{ sceneName }}</el-descriptions-item>
@@ -19,9 +21,10 @@
 <script setup>
 import { computed } from 'vue'
 import DatasetValidationResult from './DatasetValidationResult.vue'
+import AsyncState from '@/components/common/AsyncState.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
-const props=defineProps({modelValue:Boolean,dataset:{type:Object,default:null},scenes:{type:Array,default:()=>[]},loading:Boolean,validationResult:{type:Object,default:null}})
-defineEmits(['update:modelValue'])
+const props=defineProps({modelValue:Boolean,dataset:{type:Object,default:null},scenes:{type:Array,default:()=>[]},loading:Boolean,error:{type:String,default:''},validationResult:{type:Object,default:null}})
+defineEmits(['update:modelValue','retry'])
 const sceneName=computed(()=>props.scenes.find((item)=>item.id===props.dataset?.scene_id)?.display_name||`场景 #${props.dataset?.scene_id??'-'}`)
 const annotationCount=computed(()=>(props.dataset?.images||[]).reduce((sum,item)=>sum+(item.defect_count||0),0))
 const formatDate=(value)=>value?new Date(value).toLocaleString('zh-CN'):'-'

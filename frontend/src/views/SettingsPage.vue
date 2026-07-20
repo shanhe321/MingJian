@@ -2,7 +2,15 @@
   <div class="settings-page">
     <PageHeader title="系统设置" description="管理个人资料、账户安全和平台信息。" />
 
-    <el-row :gutter="24">
+    <AsyncState
+      v-if="profileState !== 'success'"
+      :state="profileState"
+      :message="profileError"
+      empty-text="未获取到用户资料"
+      @retry="loadUserInfo"
+    />
+
+    <el-row v-else :gutter="24">
       <!-- 个人信息 -->
       <el-col :span="12">
         <el-card shadow="never">
@@ -117,7 +125,9 @@ import { changePassword, updateProfile } from '@/api/user'
 import { useUserStore } from '@/stores/user'
 import SceneSettingsPanel from '@/components/settings/SceneSettingsPanel.vue'
 import SystemMaintenancePanel from '@/components/settings/SystemMaintenancePanel.vue'
+import AsyncState from '@/components/common/AsyncState.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import { getErrorMessage } from '@/utils/errorMessages'
 import { ElMessage } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
 
@@ -131,6 +141,8 @@ const profileForm = reactive({
   created_at: null,
 })
 const profileLoading = ref(false)
+const profileState = ref('loading')
+const profileError = ref('')
 
 // ── 修改密码 ──
 const passwordFormRef = ref(null)
@@ -170,14 +182,22 @@ function formatDate(dateStr) {
 
 // ── 加载用户信息 ──
 async function loadUserInfo() {
+  profileState.value = 'loading'
+  profileError.value = ''
   try {
     const res = await getUserInfoApi()
+    if (!res) {
+      profileState.value = 'empty'
+      return
+    }
     profileForm.username = res.username
     profileForm.email = res.email
     profileForm.phone = res.phone || ''
     profileForm.created_at = res.created_at
+    profileState.value = 'success'
   } catch (err) {
-    console.error('[加载用户信息失败]', err)
+    profileState.value = 'error'
+    profileError.value = getErrorMessage(err)
   }
 }
 
@@ -279,8 +299,7 @@ onMounted(() => {
 
   :deep(.el-card) {
     border-radius: $border-radius-lg;
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.88));
+    background: #fff;
     border-color: $border-color;
     box-shadow:
       $shadow-sm,

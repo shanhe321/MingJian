@@ -16,12 +16,22 @@
       </template>
     </PageHeader>
 
+    <AsyncState
+      v-if="dashboardState !== 'success'"
+      :state="dashboardState"
+      :message="dashboardError"
+      empty-text="当前范围内暂无统计数据"
+      @retry="loadAllData"
+    />
+
+    <template v-else>
+
     <!-- ── 数字统计卡片 ── -->
     <el-row :gutter="16" class="stat-cards" v-loading="loading">
       <el-col :span="6">
         <el-card shadow="never" class="stat-card">
           <div class="stat-icon stat-icon-tasks">
-            <el-icon :size="28" color="#5b7cfa"><Document /></el-icon>
+              <el-icon :size="28" color="#3b82f6"><Document /></el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ stats.total_detections }}</div>
@@ -33,7 +43,7 @@
       <el-col :span="6">
         <el-card shadow="never" class="stat-card">
           <div class="stat-icon stat-icon-images">
-            <el-icon :size="28" color="#48b8f7"><PictureFilled /></el-icon>
+              <el-icon :size="28" color="#38bdf8"><PictureFilled /></el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ formatNumber(stats.total_items) }}</div>
@@ -45,7 +55,7 @@
       <el-col :span="6">
         <el-card shadow="never" class="stat-card">
           <div class="stat-icon stat-icon-objects">
-            <el-icon :size="28" color="#8b5cf6"><Aim /></el-icon>
+              <el-icon :size="28" color="#0ea5e9"><Aim /></el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ formatNumber(stats.defective_pcbs) }}</div>
@@ -69,10 +79,6 @@
     </el-row>
 
     <!-- ── 图表区域 ── -->
-    <div v-if="!hasDashboardData && !loading" class="dashboard-empty-note">
-      当前时间范围内暂无统计数据，图表会在检测任务产生后自动展示。
-    </div>
-
     <el-row :gutter="16" class="chart-row">
       <!-- 每日检测趋势（折线图） -->
       <el-col :span="16">
@@ -131,6 +137,7 @@
         <el-table-column prop="created_at" label="创建时间" min-width="180" />
       </el-table>
     </el-card>
+    </template>
   </div>
 </template>
 
@@ -149,28 +156,23 @@ import { getOverview, getTypeDistribution } from '@/api/dashboard'
 import { useUserStore } from '@/stores/user'
 import { Aim, Document, PictureFilled, Timer } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import AsyncState from '@/components/common/AsyncState.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
+import { getErrorMessage } from '@/utils/errorMessages'
 
 // ── 响应式状态 ──
 const periodDays = ref(30)
 const scope = ref('personal')
 const userStore = useUserStore()
 const loading = ref(false)
+const dashboardState = ref('loading')
+const dashboardError = ref('')
 const stats = ref({
   total_detections: 0, total_items: 0, defective_pcbs: 0, qualified_pcbs: 0,
   today_detections: 0, today_items: 0, pass_rate: 0, average_confidence: 0,
   recent_records: [],
-})
-
-const hasDashboardData = computed(() => {
-  return Boolean(
-    stats.value.total_detections
-    || stats.value.total_items
-    || stats.value.defective_pcbs
-    || stats.value.qualified_pcbs
-  )
 })
 
 // ── 图表 DOM 引用 ──
@@ -215,6 +217,9 @@ function growthClass(key, inverse = false) {
 async function loadAllData() {
   const days = periodDays.value
   loading.value = true
+  disposeCharts()
+  dashboardState.value = 'loading'
+  dashboardError.value = ''
   try {
     const [overview, types] = await Promise.all([
       getOverview(days, scope.value),
@@ -222,13 +227,38 @@ async function loadAllData() {
     ])
 
     stats.value = overview
+    const hasData = Boolean(
+      overview.total_detections
+      || overview.total_items
+      || overview.defective_pcbs
+      || overview.qualified_pcbs
+      || overview.today_detections
+      || overview.today_items
+      || overview.recent_records?.length
+      || overview.trend?.length
+      || overview.class_distribution?.length
+      || overview.scene_distribution?.length
+      || overview.risk_distribution?.length
+      || types.distribution?.length
+    )
+
+    if (!hasData) {
+      dashboardState.value = 'empty'
+      disposeCharts()
+      return
+    }
+
+    dashboardState.value = 'success'
+    await nextTick()
     renderTrendChart(overview.trend)
     renderClassChart(overview.class_distribution)
     renderSceneChart(overview.scene_distribution)
     renderRiskChart(overview.risk_distribution)
     renderTypeChart(types.distribution || [])
   } catch (err) {
-    console.error('[看板数据加载失败]', err)
+    dashboardState.value = 'error'
+    dashboardError.value = getErrorMessage(err)
+    disposeCharts()
   } finally {
     loading.value = false
   }
@@ -287,11 +317,11 @@ function renderTrendChart(trend = []) {
         lineStyle: { width: 2 },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(91,124,250,0.22)' },
-            { offset: 1, color: 'rgba(91,124,250,0.02)' },
+            { offset: 0, color: 'rgba(59,130,246,0.2)' },
+            { offset: 1, color: 'rgba(59,130,246,0.02)' },
           ]),
         },
-        itemStyle: { color: '#5b7cfa' },
+        itemStyle: { color: '#3b82f6' },
       },
       {
         name: '检测目标',
@@ -302,11 +332,11 @@ function renderTrendChart(trend = []) {
         lineStyle: { width: 2 },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(72,184,247,0.2)' },
-            { offset: 1, color: 'rgba(72,184,247,0.02)' },
+            { offset: 0, color: 'rgba(56,189,248,0.2)' },
+            { offset: 1, color: 'rgba(56,189,248,0.02)' },
           ]),
         },
-        itemStyle: { color: '#48b8f7' },
+        itemStyle: { color: '#38bdf8' },
       },
     ],
   })
@@ -390,8 +420,8 @@ function renderSceneChart(distribution = []) {
         itemStyle: {
           borderRadius: [0, 4, 4, 0],
           color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: '#5b7cfa' },
-            { offset: 1, color: '#48b8f7' },
+            { offset: 0, color: '#3b82f6' },
+            { offset: 1, color: '#38bdf8' },
           ]),
         },
         label: {
@@ -424,7 +454,7 @@ function renderTypeChart(distribution = []) {
     typeChart = echarts.init(typeChartRef.value, CHART_THEME)
   }
 
-  const colors = ['#5b7cfa', '#8b5cf6', '#48b8f7', '#16a368', '#d99018']
+  const colors = ['#3b82f6', '#38bdf8', '#0ea5e9', '#16a368', '#d99018']
 
   typeChart.setOption({
     backgroundColor: 'transparent',
@@ -469,6 +499,19 @@ function handleResize() {
   riskChart?.resize()
 }
 
+function disposeCharts() {
+  trendChart?.dispose()
+  classChart?.dispose()
+  sceneChart?.dispose()
+  typeChart?.dispose()
+  riskChart?.dispose()
+  trendChart = null
+  classChart = null
+  sceneChart = null
+  typeChart = null
+  riskChart = null
+}
+
 onMounted(() => {
   loadAllData()
   window.addEventListener('resize', handleResize)
@@ -476,11 +519,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
-  trendChart?.dispose()
-  classChart?.dispose()
-  sceneChart?.dispose()
-  typeChart?.dispose()
-  riskChart?.dispose()
+  disposeCharts()
 })
 </script>
 
@@ -524,8 +563,7 @@ onBeforeUnmount(() => {
 
 .stat-card {
   border-radius: $border-radius-lg;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.86));
+  background: #fff;
   border: 1px solid $border-color;
   box-shadow:
     $shadow-sm,
@@ -562,15 +600,15 @@ onBeforeUnmount(() => {
 }
 
 .stat-icon-tasks {
-  background: rgba(139, 92, 246, 0.14);
+  background: #eaf4ff;
 }
 
 .stat-icon-images {
-  background: rgba(72, 184, 247, 0.12);
+  background: #e7f8ff;
 }
 
 .stat-icon-objects {
-  background: rgba(139, 92, 246, 0.12);
+  background: #e8f5ff;
 }
 
 .stat-icon-time {
@@ -631,8 +669,7 @@ onBeforeUnmount(() => {
 
   :deep(.el-card) {
     border-radius: $border-radius-lg;
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.88));
+    background: #fff;
     border-color: $border-color;
     box-shadow:
       $shadow-sm,
@@ -640,23 +677,11 @@ onBeforeUnmount(() => {
   }
 }
 
-.dashboard-empty-note {
-  margin: 0 0 $spacing-md;
-  padding: 12px 14px;
-  border: 1px solid $border-color;
-  border-radius: $border-radius-lg;
-  background: rgba(91, 124, 250, 0.06);
-  color: $text-secondary;
-  font-size: 13px;
-}
-
 .chart-container {
   height: 320px;
   width: 100%;
   border-radius: $border-radius-md;
-  background:
-    radial-gradient(circle at 80% 0, rgba(91, 124, 250, 0.06), transparent 36%),
-    rgba(248, 250, 255, 0.88);
+  background: #f8fbff;
 }
 
 @media (max-width: 900px) {

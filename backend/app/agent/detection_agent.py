@@ -191,7 +191,10 @@ class DetectionAgent:
 
                     if (
                         event_kind == "on_chain_start"
-                        and node_name in {"supervisor", "management", "detection", "analysis", "summarize"}
+                        and node_name in {
+                            "supervisor", "management", "detection", "analysis",
+                            "detection_then_analysis", "summarize",
+                        }
                         and node_name not in announced_nodes
                     ):
                         announced_nodes.add(node_name)
@@ -200,6 +203,7 @@ class DetectionAgent:
                             "management": "正在查询系统管理信息...",
                             "detection": "正在执行检测并分析结果...",
                             "analysis": "正在查询数据与知识库...",
+                            "detection_then_analysis": "正在检测并基于本次结果回答问题...",
                             "summarize": "正在整理并生成最终回复...",
                         }[node_name]
                         yield {"type": "thinking", "content": phase_text}

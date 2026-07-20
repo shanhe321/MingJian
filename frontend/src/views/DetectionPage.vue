@@ -1,13 +1,6 @@
 <template>
   <div class="detection-page">
-    <PageHeader
-      title="实时检测工作台"
-      description="使用摄像头进行实时 PCB 缺陷检测，目标、帧率与推理状态同步更新。"
-    >
-      <template #actions>
-        <el-button @click="$router.push('/history')">查看检测历史</el-button>
-      </template>
-    </PageHeader>
+    <PageHeader title="实时检测工作台" />
 
     <CameraWorkspace />
   </div>
@@ -37,11 +30,6 @@ import PageHeader from '@/components/common/PageHeader.vue'
 
   :deep(.page-header h1) {
     font-size: 22px;
-  }
-
-  :deep(.page-description) {
-    margin-top: 5px;
-    font-size: 12px;
   }
 
   :deep(.camera-workspace) {

@@ -74,9 +74,9 @@ h2 {
   height: 26px;
   padding: 0 7px;
   border-radius: 9px;
-  background: rgba(91, 124, 250, 0.09);
+    background: #eaf4ff;
   color: $primary-color;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -102,7 +102,7 @@ h2 {
   border-radius: 9px;
   background: #f2f5fa;
   color: $text-secondary;
-  font-size: 9px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -112,13 +112,13 @@ h2 {
 
   strong,
   small { display: block; }
-  strong { color: $text-primary; font-size: 11px; }
-  small { margin-top: 2px; color: $text-placeholder; font-size: 8px; }
+  strong { color: $text-primary; font-size: 13px; }
+  small { margin-top: 2px; color: $text-placeholder; font-size: 13px; }
 }
 
 .confidence {
   color: $success-color;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -139,11 +139,11 @@ h2 {
     height: 38px;
     margin-bottom: 6px;
     border-radius: 12px;
-    background: rgba(91, 124, 250, 0.08);
+  background: #eef7ff;
     color: $primary-color;
   }
 
-  strong { color: $text-primary; font-size: 11px; }
-  small { max-width: 220px; margin-top: 4px; font-size: 9px; line-height: 1.5; }
+  strong { color: $text-primary; font-size: 14px; }
+  small { max-width: 220px; margin-top: 4px; font-size: 13px; line-height: 1.5; }
 }
 </style>

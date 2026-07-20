@@ -1,5 +1,6 @@
 """Supervisor：在 Management、Detection、Analysis 三个 Agent 之间路由。"""
 
+import re
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -46,6 +47,11 @@ class SupervisorAgent:
         """识别当前用户意图，只返回三个合法路由之一。"""
         messages = state.get("messages", [])
         latest = messages[-1] if messages else HumanMessage(content="")
+        latest_content = _message_content(latest)
+        composite_route = self._composite_route(latest_content)
+        if composite_route:
+            logger.info("Supervisor 复合请求路由: route=%s", composite_route)
+            return {"next_agent": composite_route}
         role = "管理员" if state.get("is_superuser", False) else "普通用户"
         role_context = SystemMessage(content=f"当前用户身份：{role}。必须遵守权限边界。")
         response = await self._invoke(
@@ -62,6 +68,32 @@ class SupervisorAgent:
         return {"next_agent": next_agent}
 
     @staticmethod
+    def _composite_route(message: str) -> str | list[str] | None:
+        """区分可并行的独立问题与必须等待检测结果的依赖问题。"""
+        if "[附件图片路径:" not in message:
+            return None
+        question = re.sub(r"\[附件图片路径:[^\]]+\]", "", message).strip()
+        if not question:
+            return None
+        question_markers = (
+            "?", "？", "为什么", "什么", "如何", "怎么", "是否", "能否",
+            "多少", "介绍", "解释", "区别", "告诉我", "查询", "查看",
+        )
+        if not any(marker in question for marker in question_markers):
+            return None
+        management_markers = ("用户列表", "权限", "系统检测量", "模型版本")
+        if any(marker in question for marker in management_markers):
+            return ["detection", "management"]
+        independent_markers = (
+            "IoU", "IOU", "iou", "NMS", "mAP", "MAP", "Precision",
+            "Recall", "YOLO", "评估指标", "知识库", "定义", "区别",
+            "历史", "最近", "过去", "趋势", "统计", "多少次", "总检测量",
+        )
+        if any(marker in question for marker in independent_markers):
+            return ["detection", "analysis"]
+        return "detection_then_analysis"
+
+    @staticmethod
     def _normalize_route(value: str) -> str:
         if "management" in value or "管理" in value or "用户列表" in value or "权限" in value:
             return "management"
@@ -71,9 +103,14 @@ class SupervisorAgent:
             return "analysis"
         return "analysis"
 
-    def decide_next(self, state: dict) -> str:
+    def decide_next(self, state: dict) -> str | list[str]:
         """LangGraph 条件边使用的路由函数。"""
-        return self._normalize_route(str(state.get("next_agent", "analysis")))
+        next_agent = state.get("next_agent", "analysis")
+        if isinstance(next_agent, list):
+            return [self._normalize_route(str(value)) for value in next_agent]
+        if next_agent == "detection_then_analysis":
+            return next_agent
+        return self._normalize_route(str(next_agent))
 
     async def summarize(
         self,
