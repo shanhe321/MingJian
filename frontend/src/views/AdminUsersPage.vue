@@ -63,5 +63,5 @@ onMounted(loadUsers)
 </script>
 
 <style lang="scss" scoped>
-.admin-users-page{max-width:$page-max-width;margin:0 auto}.permission-note,.filter-card{margin-bottom:$spacing-md}.filter-card,.table-card{border-radius:$border-radius-lg;border-color:$border-color;background:linear-gradient(180deg,rgba(255,255,255,.97),rgba(248,251,255,.9))}.filter-card :deep(.el-form-item){margin-bottom:0}.user-cell{display:flex;align-items:center;gap:10px}.user-cell strong,.user-cell small{display:block}.user-cell small{margin-top:3px;color:$text-secondary;font-size:12px}.pagination{display:flex;justify-content:flex-end;padding-top:$spacing-md}
+.admin-users-page{max-width:$page-max-width;margin:0 auto}.permission-note,.filter-card{margin-bottom:$spacing-md}.filter-card,.table-card{border-radius:$border-radius-lg;border-color:$border-color;background:#fff}.filter-card :deep(.el-form-item){margin-bottom:0}.user-cell{display:flex;align-items:center;gap:10px}.user-cell strong,.user-cell small{display:block}.user-cell small{margin-top:3px;color:$text-secondary;font-size:13px}.pagination{display:flex;justify-content:flex-end;padding-top:$spacing-md}
 </style>

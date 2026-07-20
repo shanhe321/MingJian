@@ -13,7 +13,7 @@
 
     <div class="channel-status" aria-label="实时连接状态">
       <span :class="{ connected: cameraReady }"><i></i>摄像头 {{ cameraReady ? '已连接' : '未连接' }}</span>
-      <span :class="{ connected: inferenceConnected }"><i></i>推理通道 {{ inferenceConnected ? '已连接' : '未连接' }}</span>
+      <span :class="{ connected: inferenceConnected }"><i></i>推理 {{ inferenceConnected ? '已连接' : '未连接' }}</span>
     </div>
 
     <el-form label-position="top" class="control-form">
@@ -82,16 +82,12 @@
       <span></span>停止实时检测
     </button>
 
-    <p class="permission-note">
-      <el-icon><Lock /></el-icon>
-      视频仅用于实时推理，浏览器会先请求摄像头权限。
-    </p>
   </section>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import { Loading, Lock, VideoCamera } from '@element-plus/icons-vue'
+import { Loading, VideoCamera } from '@element-plus/icons-vue'
 
 const props = defineProps({
   scenes: { type: Array, default: () => [] },
@@ -143,8 +139,7 @@ const statusClass = computed(() => {
 .slider-label,
 .status-pill,
 .primary-action,
-.stop-action,
-.permission-note {
+.stop-action {
   display: flex;
   align-items: center;
 }
@@ -168,7 +163,7 @@ h2 {
   border-radius: 999px;
   background: #f1f4f9;
   color: $text-secondary;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 650;
 
   i {
@@ -184,7 +179,6 @@ h2 {
 
     i {
       background: $success-color;
-      box-shadow: 0 0 0 4px rgba(22, 163, 104, 0.1);
     }
   }
 
@@ -206,8 +200,8 @@ h2 {
 .control-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 12px;
-  margin-top: 9px;
+  gap: 10px 12px;
+  margin-top: 10px;
 
   :deep(.el-form-item) {
     min-width: 0;
@@ -217,22 +211,22 @@ h2 {
   :deep(.el-form-item__label) {
     width: 100%;
     color: $text-secondary;
-    height: 20px;
+    height: 22px;
     padding: 0;
-    font-size: 10px;
+    font-size: 13px;
     font-weight: 600;
   }
 
   :deep(.el-select) { width: 100%; }
   :deep(.el-select__wrapper) {
-    min-height: 34px;
+    min-height: 38px;
     border-radius: 10px;
     background: #f8faff;
     box-shadow: 0 0 0 1px rgba(207, 216, 230, 0.78) inset;
   }
 
   :deep(.el-slider__bar) {
-    background: linear-gradient(90deg, $primary-color-light, #7765ed);
+  background: $primary-color;
   }
 
   :deep(.el-slider__button) {
@@ -263,7 +257,7 @@ h2 {
     border-radius: 8px;
     background: rgba(241, 244, 249, 0.82);
     color: $text-secondary;
-    font-size: 9px;
+    font-size: 13px;
     text-overflow: ellipsis;
     white-space: nowrap;
 
@@ -290,7 +284,7 @@ h2 {
 
   strong {
     color: $primary-color-dark;
-    font-size: 11px;
+    font-size: 13px;
   }
 }
 
@@ -308,9 +302,9 @@ h2 {
 
 .primary-action {
   border: 0;
-  background: linear-gradient(135deg, $primary-color-light, #6f5ce7);
+  background: $primary-color;
   color: #fff;
-  box-shadow: 0 11px 24px rgba(91, 124, 250, 0.22);
+  box-shadow: none;
 
   &:disabled { opacity: 0.7; cursor: wait; }
 }
@@ -328,12 +322,4 @@ h2 {
   }
 }
 
-.permission-note {
-  align-items: flex-start;
-  gap: 6px;
-  margin: 6px 2px 0;
-  color: $text-placeholder;
-  font-size: 9px;
-  line-height: 1.5;
-}
 </style>

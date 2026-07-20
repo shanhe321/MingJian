@@ -132,9 +132,7 @@ onMounted(() => {
   min-height: 0;
   padding: 14px 12px 12px;
   border-right: 1px solid $border-color;
-  background:
-    radial-gradient(circle at 72% 0, rgba(91, 124, 250, 0.08), transparent 190px),
-    rgba(248, 250, 254, 0.97);
+  background: #f8fbff;
   display: flex;
   flex: 0 0 280px;
   flex-direction: column;
@@ -159,14 +157,14 @@ onMounted(() => {
 
 .new-session {
   min-width: 0;
-  height: 42px;
+  height: 46px;
   flex: 1;
   justify-content: center;
   gap: 8px;
   padding: 0 14px;
-  border: 1px solid rgba(91, 124, 250, 0.24);
+  border: 1px solid rgba(59, 130, 246, 0.24);
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(91, 124, 250, 0.13), rgba(139, 92, 246, 0.09));
+  background: #eaf4ff;
   color: $primary-color-dark;
   cursor: pointer;
   font-size: 13px;
@@ -180,8 +178,8 @@ onMounted(() => {
   }
 
   &:hover {
-    border-color: rgba(91, 124, 250, 0.38);
-    background: linear-gradient(135deg, rgba(91, 124, 250, 0.18), rgba(139, 92, 246, 0.12));
+    border-color: rgba(59, 130, 246, 0.38);
+    background: #dfefff;
   }
 }
 
@@ -202,7 +200,7 @@ onMounted(() => {
   border-radius: 11px;
 
   &:hover {
-    background: rgba(91, 124, 250, 0.08);
+    background: #eef7ff;
     color: $text-primary;
   }
 }
@@ -214,7 +212,7 @@ onMounted(() => {
 
   strong {
     color: $text-secondary;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 650;
   }
 
@@ -224,7 +222,7 @@ onMounted(() => {
     border-radius: 8px;
 
     &:hover:not(:disabled) {
-      background: rgba(91, 124, 250, 0.08);
+      background: #eef7ff;
       color: $primary-color;
     }
   }
@@ -259,12 +257,12 @@ onMounted(() => {
 
   &:hover,
   &.is-active {
-    border-color: rgba(91, 124, 250, 0.13);
-    background: rgba(91, 124, 250, 0.075);
+    border-color: rgba(59, 130, 246, 0.14);
+    background: #f0f7ff;
   }
 
   &.is-active {
-    background: linear-gradient(135deg, rgba(91, 124, 250, 0.12), rgba(139, 92, 246, 0.075));
+    background: #eaf4ff;
   }
 }
 
@@ -308,14 +306,14 @@ onMounted(() => {
 
   strong {
     color: $text-primary;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 570;
   }
 
   small {
     margin-top: 3px;
     color: $text-placeholder;
-    font-size: 10px;
+    font-size: 13px;
   }
 }
 
@@ -365,13 +363,13 @@ onMounted(() => {
     height: 40px;
     margin-bottom: 9px;
     border-radius: 12px;
-    background: rgba(91, 124, 250, 0.08);
+    background: #eef7ff;
     color: $primary-color;
     font-size: 19px;
   }
 
-  strong { color: $text-primary; font-size: 12px; }
-  small { margin-top: 5px; font-size: 10px; line-height: 1.5; }
+  strong { color: $text-primary; font-size: 14px; }
+  small { margin-top: 5px; font-size: 13px; line-height: 1.5; }
 }
 
 @media (max-width: 1100px) {
@@ -382,7 +380,7 @@ onMounted(() => {
     left: $sidebar-width;
     width: min(280px, calc(100vw - #{$sidebar-width}));
     height: auto;
-    box-shadow: 18px 0 42px rgba(40, 58, 96, 0.16);
+    box-shadow: 10px 0 28px rgba(37, 99, 235, 0.08);
   }
 }
 </style>

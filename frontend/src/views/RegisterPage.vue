@@ -2,7 +2,7 @@
   <div class="register-page">
     <div class="register-card">
       <div class="register-header">
-        <img src="/favicon.svg" alt="logo" class="register-logo" />
+        <span class="register-logo"><img :src="rsodLogo" alt="RSOD PCB 检测标识" /></span>
         <h2>创建账号</h2>
         <p>注册后即可使用目标检测智能体平台</p>
       </div>
@@ -76,6 +76,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import rsodLogo from '@/assets/images/rsod-logo.png'
 import { registerApi } from '@/api/auth'
 
 const router = useRouter()
@@ -151,12 +152,7 @@ async function handleRegister() {
   justify-content: center;
   position: relative;
   isolation: isolate;
-  background:
-    radial-gradient(circle at 72% 5%, rgba(91, 124, 250, 0.16), transparent 34rem),
-    radial-gradient(circle at 18% 10%, rgba(139, 92, 246, 0.11), transparent 28rem),
-    radial-gradient(circle at 52% 0, rgba(72, 184, 247, 0.08), transparent 22rem),
-    linear-gradient(180deg, #f8fbff 0%, #f5f7fc 100%),
-    $bg-color;
+  background: #f7fbff;
 
   &::before {
     content: "";
@@ -164,8 +160,8 @@ async function handleRegister() {
     inset: 0;
     pointer-events: none;
     background-image:
-      linear-gradient(rgba(91, 124, 250, 0.035) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(91, 124, 250, 0.028) 1px, transparent 1px);
+      linear-gradient(rgba(59, 130, 246, 0.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56, 189, 248, 0.024) 1px, transparent 1px);
     background-size: 44px 44px;
     mask-image: radial-gradient(circle at 50% 8%, rgba(0, 0, 0, 0.55), transparent 62%);
     z-index: -1;
@@ -175,6 +171,7 @@ async function handleRegister() {
 .register-card {
   width: 420px;
   padding: 40px;
+  border: 1px solid $border-color;
   background: #fff;
   border-radius: $border-radius-lg;
   box-shadow: $shadow-lg;
@@ -185,9 +182,22 @@ async function handleRegister() {
   margin-bottom: 32px;
 
   .register-logo {
+    display: inline-grid;
+    place-items: center;
     width: 48px;
     height: 48px;
+    overflow: hidden;
     margin-bottom: 12px;
+    border: 1px solid $border-color;
+    border-radius: 14px;
+
+    img {
+      width: 46px;
+      height: 46px;
+      max-width: none;
+      object-fit: cover;
+      transform: translateX(-3%) scale(1.55);
+    }
   }
 
   h2 {

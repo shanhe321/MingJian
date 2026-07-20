@@ -104,10 +104,9 @@ function selectMode(mode) {
   height: 34px;
   border: 1px solid rgba(207, 216, 230, 0.92);
   border-radius: 999px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(239, 244, 252, 0.72));
+  background: #fff;
   color: $text-regular;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  box-shadow: none;
   cursor: pointer;
   padding: 0 10px;
   white-space: nowrap;
@@ -119,9 +118,7 @@ function selectMode(mode) {
   &:hover,
   &:focus-visible {
     border-color: $border-color-strong;
-    background:
-      linear-gradient(135deg, rgba(91, 124, 250, 0.08), rgba(139, 92, 246, 0.06)),
-      #fff;
+    background: #eef7ff;
     color: $text-primary;
     outline: none;
   }
@@ -150,8 +147,7 @@ function selectMode(mode) {
   width: 30px;
   height: 30px;
   border-radius: 10px;
-  background:
-    linear-gradient(135deg, rgba(91, 124, 250, 0.12), rgba(139, 92, 246, 0.1));
+  background: #eaf4ff;
   color: $primary-color-light;
   flex-shrink: 0;
 }
@@ -174,6 +170,6 @@ function selectMode(mode) {
 }
 
 :global(.detection-mode-popper .el-dropdown-menu__item.is-selected) {
-  background: rgba(91, 124, 250, 0.1);
+  background: #eaf4ff;
 }
 </style>

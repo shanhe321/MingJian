@@ -40,5 +40,5 @@ onMounted(load)
 </script>
 
 <style lang="scss" scoped>
-.audit-page{max-width:$page-max-width;margin:0 auto}.filter-card{margin-bottom:$spacing-md}.filter-card,.table-card{border-radius:$border-radius-lg;border-color:$border-color;background:linear-gradient(180deg,rgba(255,255,255,.97),rgba(248,251,255,.9))}.filter-card :deep(.el-form-item){margin-bottom:8px}.pagination{display:flex;justify-content:flex-end;padding-top:$spacing-md}.muted{color:$text-secondary}
+.audit-page{max-width:$page-max-width;margin:0 auto}.filter-card{margin-bottom:$spacing-md}.filter-card,.table-card{border-radius:$border-radius-lg;border-color:$border-color;background:#fff}.filter-card :deep(.el-form-item){margin-bottom:8px}.pagination{display:flex;justify-content:flex-end;padding-top:$spacing-md}.muted{color:$text-secondary}
 </style>

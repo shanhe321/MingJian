@@ -147,26 +147,20 @@ function handleFileChange(event) {
 
 .composer {
   overflow: hidden;
-  border: 1px solid rgba(181, 193, 214, 0.74);
+  border: 1px solid $border-color;
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.93);
-  box-shadow:
-    0 18px 46px rgba(46, 66, 108, 0.1),
-    0 2px 8px rgba(46, 66, 108, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(20px) saturate(1.08);
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.045);
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 
   &:focus-within {
-    border-color: rgba(91, 124, 250, 0.42);
-    box-shadow:
-      0 20px 52px rgba(46, 66, 108, 0.12),
-      0 0 0 3px rgba(91, 124, 250, 0.08);
+    border-color: rgba(59, 130, 246, 0.42);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.08);
   }
 
   :deep(.el-textarea__inner) {
-    min-height: 54px !important;
-    padding: 17px 20px 8px;
+    min-height: 60px !important;
+    padding: 19px 20px 9px;
     border: 0;
     background: transparent;
     box-shadow: none;
@@ -218,14 +212,14 @@ function handleFileChange(event) {
   color: $text-secondary;
 
   &:hover:not(:disabled) {
-    background: rgba(91, 124, 250, 0.08);
+    background: #eef7ff;
     color: $text-primary;
   }
 }
 
 .attachment-button {
-  border: 1px solid rgba(207, 216, 230, 0.8);
-  background: rgba(248, 250, 254, 0.86);
+  border: 1px solid $border-color;
+  background: #fff;
 }
 
 .send-button,
@@ -247,9 +241,9 @@ function handleFileChange(event) {
 }
 
 .send-button {
-  background: linear-gradient(135deg, $primary-color-light, #705cf3);
+  background: $primary-color;
   color: #fff;
-  box-shadow: 0 8px 18px rgba(91, 124, 250, 0.24);
+  box-shadow: none;
 
   &:disabled {
     background: #d9dfeb;
@@ -275,10 +269,10 @@ function handleFileChange(event) {
   width: min(430px, 100%);
   margin: 0 0 8px 10px;
   padding: 8px 9px;
-  border: 1px solid rgba(91, 124, 250, 0.16);
+  border: 0;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 8px 24px rgba(47, 68, 112, 0.06);
+  background: #f5f7fa;
+  box-shadow: none;
 }
 
 .selected-file-main {
@@ -296,7 +290,7 @@ function handleFileChange(event) {
   .selected-file-icon {
     display: inline-grid;
     place-items: center;
-    background: rgba(91, 124, 250, 0.09);
+    background: #eaf4ff;
     color: $primary-color;
   }
 }
@@ -314,13 +308,13 @@ function handleFileChange(event) {
 
   strong {
     color: $text-primary;
-    font-size: 12px;
+    font-size: 13px;
   }
 
   small {
     margin-top: 2px;
     color: $text-secondary;
-    font-size: 10px;
+    font-size: 13px;
   }
 }
 
@@ -348,9 +342,9 @@ function handleFileChange(event) {
     overflow: hidden;
     padding: 3px 7px;
     border-radius: 7px;
-    background: rgba(91, 124, 250, 0.07);
+    background: #f0f7ff;
     color: $text-secondary;
-    font-size: 9px;
+    font-size: 13px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -359,7 +353,7 @@ function handleFileChange(event) {
 .composer-hint {
   margin: 7px 0 0;
   color: $text-placeholder;
-  font-size: 9px;
+  font-size: 13px;
   text-align: center;
 }
 

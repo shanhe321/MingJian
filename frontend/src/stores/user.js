@@ -61,7 +61,8 @@ export const useUserStore = defineStore('user', {
         this.user = user
         localStorage.setItem(USER_KEY, JSON.stringify(user))
       } catch {
-        this.logout()
+        // 仅 401 由请求拦截器清理会话；临时网络或服务错误不应误登出用户。
+        return null
       }
     },
 
