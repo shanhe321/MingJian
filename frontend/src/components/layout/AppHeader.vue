@@ -1,8 +1,7 @@
 <template>
   <header class="app-header">
-    <router-link class="header-brand" to="/chat" aria-label="RSOD Agent 首页">
+    <router-link class="header-brand" to="/chat" aria-label="PCB 智能检测平台首页">
       <span class="brand-logo"><img :src="rsodLogo" alt="" /></span>
-      <span class="brand-name">RSOD Agent</span>
     </router-link>
     <div class="header-center">
       <ModeSwitcher />
@@ -46,10 +45,7 @@ import ModeSwitcher from './ModeSwitcher.vue'
   left: $spacing-lg;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  color: $text-primary;
-  font-size: 13px;
-  font-weight: 700;
+  justify-content: center;
   text-decoration: none;
 
   .brand-logo {
@@ -69,12 +65,6 @@ import ModeSwitcher from './ModeSwitcher.vue'
       object-fit: cover;
       transform: translateX(-3%) scale(1.55);
     }
-  }
-}
-
-@media (max-width: 560px) {
-  .brand-name {
-    display: none;
   }
 }
 </style>

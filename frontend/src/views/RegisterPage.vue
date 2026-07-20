@@ -2,7 +2,7 @@
   <div class="register-page">
     <div class="register-card">
       <div class="register-header">
-        <span class="register-logo"><img :src="rsodLogo" alt="RSOD PCB 检测标识" /></span>
+        <span class="register-logo"><img :src="rsodLogo" alt="PCB 检测标识" /></span>
         <h2>创建账号</h2>
         <p>注册后即可使用目标检测智能体平台</p>
       </div>

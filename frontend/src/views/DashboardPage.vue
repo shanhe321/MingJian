@@ -161,6 +161,7 @@ import AsyncState from '@/components/common/AsyncState.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import { getErrorMessage } from '@/utils/errorMessages'
+import { compactChartLabel, defectClassLabel } from '@/utils/defectClasses'
 
 // ── 响应式状态 ──
 const periodDays = ref(30)
@@ -286,10 +287,11 @@ function renderTrendChart(trend = []) {
       bottom: 0,
     },
     grid: {
-      left: 50,
-      right: 20,
-      top: 20,
-      bottom: 40,
+      left: 28,
+      right: 36,
+      top: 48,
+      bottom: 48,
+      containLabel: true,
     },
     xAxis: {
       type: 'category',
@@ -300,11 +302,15 @@ function renderTrendChart(trend = []) {
       {
         type: 'value',
         name: '任务数',
+        nameGap: 24,
+        nameTextStyle: { padding: [0, 0, 0, 6] },
         axisLabel: { fontSize: 11 },
       },
       {
         type: 'value',
         name: '目标数',
+        nameGap: 24,
+        nameTextStyle: { padding: [0, 6, 0, 0] },
         axisLabel: { fontSize: 11 },
       },
     ],
@@ -349,25 +355,39 @@ function renderClassChart(distribution = []) {
     classChart = echarts.init(classChartRef.value, CHART_THEME)
   }
 
+  const chartData = distribution.map((item) => ({
+    ...item,
+    originalName: item.name,
+    name: defectClassLabel(item.name),
+  }))
+
   classChart.setOption({
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'item',
-      formatter: (params) => `${params.name}: ${params.value} (${params.percent}%)<br/>平均置信度: ${params.data.average_confidence ?? 0}`,
+      formatter: (params) => {
+        const original = params.data.originalName
+        const name = original && original !== params.name ? `${params.name}（${original}）` : params.name
+        return `${name}: ${params.value} (${params.percent}%)<br/>平均置信度: ${params.data.average_confidence ?? 0}`
+      },
     },
     legend: {
       type: 'scroll',
-      orient: 'vertical',
-      right: 10,
-      top: 20,
-      bottom: 20,
+      orient: 'horizontal',
+      left: 14,
+      right: 14,
+      bottom: 0,
+      pageIconSize: 10,
+      formatter: (name) => compactChartLabel(name, 10),
+      tooltip: { show: true },
     },
     series: [
       {
         type: 'pie',
-        radius: '65%',
-        center: ['35%', '50%'],
-        data: distribution,
+        radius: ['28%', '54%'],
+        center: ['50%', '42%'],
+        data: chartData,
+        avoidLabelOverlap: true,
         emphasis: {
           itemStyle: {
             shadowBlur: 10,
@@ -376,9 +396,12 @@ function renderClassChart(distribution = []) {
           },
         },
         label: {
-          formatter: '{b}\n{d}%',
-          fontSize: 12,
+          formatter: (params) => `${compactChartLabel(params.name, 8)}\n${params.percent}%`,
+          fontSize: 11,
+          lineHeight: 15,
         },
+        labelLine: { length: 10, length2: 6 },
+        labelLayout: { hideOverlap: true, moveOverlap: 'shiftY' },
       },
     ],
   })
@@ -398,10 +421,11 @@ function renderSceneChart(distribution = []) {
       axisPointer: { type: 'shadow' },
     },
     grid: {
-      left: 80,
-      right: 20,
-      top: 20,
-      bottom: 30,
+      left: 18,
+      right: 28,
+      top: 28,
+      bottom: 26,
+      containLabel: true,
     },
     xAxis: {
       type: 'value',
@@ -442,9 +466,9 @@ function renderRiskChart(distribution = []) {
   riskChart.setOption({
     backgroundColor: 'transparent',
     tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    legend: { bottom: 0 },
+    legend: { type: 'scroll', left: 10, right: 10, bottom: 0, tooltip: { show: true } },
     color: ['#f56c6c', '#e6a23c', '#409eff', '#67c23a'],
-    series: [{ type: 'pie', radius: ['40%', '65%'], center: ['50%', '45%'], data: distribution.map((item) => ({ ...item, name: labels[item.name] || item.name })), label: { formatter: '{b}\n{d}%' } }],
+    series: [{ type: 'pie', radius: ['34%', '57%'], center: ['50%', '42%'], data: distribution.map((item) => ({ ...item, name: labels[item.name] || item.name })), label: { formatter: '{b}\n{d}%' }, labelLayout: { hideOverlap: true, moveOverlap: 'shiftY' } }],
   })
 }
 
@@ -463,21 +487,27 @@ function renderTypeChart(distribution = []) {
       formatter: '{b}: {c} ({d}%)',
     },
     legend: {
+      type: 'scroll',
+      left: 10,
+      right: 10,
       bottom: 0,
       itemGap: 16,
+      formatter: (name) => compactChartLabel(name, 10),
+      tooltip: { show: true },
     },
     color: colors,
     series: [
       {
         type: 'pie',
-        radius: ['40%', '65%'],
-        center: ['50%', '45%'],
-        avoidLabelOverlap: false,
+        radius: ['34%', '57%'],
+        center: ['50%', '42%'],
+        avoidLabelOverlap: true,
         data: distribution,
         label: {
           show: true,
-          formatter: '{b}\n{d}%',
+          formatter: (params) => `${compactChartLabel(params.name, 9)}\n${params.percent}%`,
         },
+        labelLayout: { hideOverlap: true, moveOverlap: 'shiftY' },
         emphasis: {
           label: {
             show: true,

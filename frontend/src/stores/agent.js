@@ -8,6 +8,7 @@ import {
   getChatSessionHistory,
   getChatSessions,
 } from '@/api/chat'
+import { createAgentTask, getAgentTaskIdentity } from '@/utils/agentTasks'
 
 export const useAgentStore = defineStore('agent', {
   state: () => ({
@@ -30,6 +31,9 @@ export const useAgentStore = defineStore('agent', {
 
     // 是否正在等待 AI 响应
     isLoading: false,
+
+    // 当前回复中正在并行执行的 Agent / Tool 任务
+    activeAgentTasks: [],
 
     // 中断函数（用于取消 SSE 流式请求）
     abortController: null,
@@ -77,6 +81,50 @@ export const useAgentStore = defineStore('agent', {
       this.isLoading = loading
     },
 
+    startAgentTask(event) {
+      const identity = getAgentTaskIdentity(event)
+      const index = this.activeAgentTasks.findIndex((task) => task.key === identity.key)
+      const existing = index >= 0 ? this.activeAgentTasks[index] : null
+      const task = createAgentTask(event, existing)
+      if (index >= 0) this.activeAgentTasks.splice(index, 1, task)
+      else this.activeAgentTasks.push(task)
+      return task
+    },
+
+    finishAgentTask(event) {
+      const identity = getAgentTaskIdentity(event)
+      let index = this.activeAgentTasks.findIndex((task) => task.key === identity.key)
+      if (index < 0) {
+        index = this.activeAgentTasks.findIndex(
+          (task) => task.agentName === identity.agentName && task.toolName === identity.toolName,
+        )
+      }
+      if (index >= 0) this.activeAgentTasks.splice(index, 1)
+    },
+
+    failAgentTask(event) {
+      const identity = getAgentTaskIdentity(event)
+      let index = this.activeAgentTasks.findIndex((task) => task.key === identity.key)
+      if (index < 0) {
+        index = this.activeAgentTasks.findIndex(
+          (task) => task.agentName === identity.agentName && task.toolName === identity.toolName,
+        )
+      }
+      if (index >= 0) {
+        this.activeAgentTasks[index] = {
+          ...this.activeAgentTasks[index],
+          status: 'error',
+          displayText: event.displayText || event.content || event.message || '执行失败',
+        }
+      } else {
+        this.activeAgentTasks.push(createAgentTask({ ...event, status: 'error' }))
+      }
+    },
+
+    clearAgentTasks() {
+      this.activeAgentTasks = []
+    },
+
     /** 中断当前流式请求 */
     abort() {
       if (this.abortController) {
@@ -84,6 +132,7 @@ export const useAgentStore = defineStore('agent', {
         this.abortController = null
       }
       this.isLoading = false
+      this.clearAgentTasks()
     },
 
     /** 新建对话 */
@@ -93,6 +142,7 @@ export const useAgentStore = defineStore('agent', {
       this.currentSessionId = null
       this.messages = []
       this.sessionLoading = false
+      this.clearAgentTasks()
       this.requestInputFocus()
     },
 

@@ -109,8 +109,8 @@ const router = createRouter({
 export async function routeGuard(to, from, next) {
   // 设置页面标题
   document.title = to.meta.title
-    ? `${to.meta.title} - RSOD Agent Platform`
-    : 'RSOD Agent Platform'
+    ? `${to.meta.title} - PCB 缺陷检测平台`
+    : 'PCB 缺陷检测平台'
 
   // 检查是否需要认证
   const token = localStorage.getItem('rsod_token')

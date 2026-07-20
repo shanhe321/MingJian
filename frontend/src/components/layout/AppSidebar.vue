@@ -1,7 +1,7 @@
 <template>
   <aside class="app-sidebar" aria-label="主导航">
     <div class="sidebar-rail">
-      <router-link class="brand-mark" to="/chat" aria-label="RSOD 智能检测平台">
+      <router-link class="brand-mark" to="/chat" aria-label="PCB 智能检测平台首页">
         <img :src="rsodLogo" alt="" />
       </router-link>
 

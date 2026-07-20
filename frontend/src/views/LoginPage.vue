@@ -2,7 +2,7 @@
   <div class="login-page">
     <div class="login-card">
       <div class="login-header">
-        <span class="login-logo"><img :src="rsodLogo" alt="RSOD PCB 检测标识" /></span>
+        <span class="login-logo"><img :src="rsodLogo" alt="PCB 检测标识" /></span>
         <h2>PCB Defect Detection Platform</h2>
         <p>基于 YOLOv11 的目标检测智能体平台</p>
       </div>

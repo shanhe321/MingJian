@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   cameraAccessErrorMessage,
   createCameraRuntimeState,
+  getContainedFrameCrop,
   nextCameraRuntimeState,
   releaseCameraResources,
 } from '@/utils/cameraRuntime'
@@ -42,5 +43,24 @@ describe('摄像头运行状态', () => {
     expect(stop).toHaveBeenCalledTimes(2)
     expect(close).toHaveBeenCalledOnce()
     expect(cancelFrame).toHaveBeenCalledWith(18)
+  })
+
+  it('将方形推理帧中的 letterbox 区域还原为摄像头真实比例', () => {
+    expect(getContainedFrameCrop(1280, 720, 640, 640)).toEqual({
+      x: 0,
+      y: 140,
+      width: 640,
+      height: 360,
+    })
+    expect(getContainedFrameCrop(640, 480, 416, 416)).toEqual({
+      x: 0,
+      y: 52,
+      width: 416,
+      height: 312,
+    })
+  })
+
+  it('无效视频尺寸不会产生错误坐标', () => {
+    expect(getContainedFrameCrop(0, 720, 640, 640)).toBeNull()
   })
 })
