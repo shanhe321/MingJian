@@ -42,21 +42,29 @@
           :class="['message-bubble', 'assistant-bubble', { 'is-error': msg.error }]"
         >
           <!-- 思考中 / 打字动画（尚无任何内容、工具调用或思考文案时展示） -->
-          <div v-if="msg.loading && !msg.content && !msg.toolCalls?.length && !msg.statusText" class="typing-indicator">
+          <div v-if="msg.loading && !msg.content && !msg.toolCalls?.length && !agentStore.activeAgentTasks.length" class="typing-indicator">
             <span></span><span></span><span></span>
           </div>
-          <!-- Agent 思考过程提示 -->
-          <div v-else-if="msg.loading && !msg.content && msg.statusText" class="thinking-hint">
-            <el-icon class="is-loading"><Loading /></el-icon>
-            <span>{{ msg.statusText }}</span>
+          <!-- 并行 Agent / Tool 状态 -->
+          <div v-if="msg.loading && agentStore.activeAgentTasks.length" class="agent-task-list">
+            <div
+              v-for="task in agentStore.activeAgentTasks"
+              :key="task.key"
+              class="agent-task-chip"
+              :class="`is-${task.status}`"
+            >
+              <el-icon v-if="task.status === 'running'" class="is-loading"><Loading /></el-icon>
+              <el-icon v-else><CircleClose /></el-icon>
+              <span>{{ task.displayText }}</span>
+            </div>
           </div>
-          <div v-else class="message-content markdown-body" v-html="renderMarkdown(msg.content)"></div>
+          <div v-if="msg.content" class="message-content markdown-body" v-html="renderMarkdown(msg.content)"></div>
 
           <!-- 工具调用可视化：loading → done -->
-          <div v-if="msg.toolCalls && msg.toolCalls.length > 0" class="tool-calls">
+          <div v-if="completedToolCalls(msg).length" class="tool-calls">
             <div
-              v-for="(tc, idx) in msg.toolCalls"
-              :key="idx"
+              v-for="tc in completedToolCalls(msg)"
+              :key="tc.key"
               class="tool-call-item"
               :class="{ 'is-loading': tc.status === 'loading' }"
             >
@@ -151,6 +159,7 @@ import ChatWelcome from '@/components/chat/ChatWelcome.vue'
 import DetectionResultCard from '@/components/DetectionResultCard.vue'
 import { useAgentStore } from '@/stores/agent'
 import { renderMarkdown } from '@/utils/markdown'
+import { getAgentTaskIdentity } from '@/utils/agentTasks'
 import { isNearScrollBottom } from '@/utils/chatScroll'
 import { streamChat, TOOL_NAME_MAP } from '@/utils/stream'
 import {
@@ -347,6 +356,10 @@ function getToolName(toolKey) {
   return TOOL_NAME_MAP[toolKey] || toolKey
 }
 
+function completedToolCalls(message) {
+  return (message.toolCalls || []).filter((toolCall) => toolCall.status !== 'loading')
+}
+
 /**
  * 发起一次 Agent 对话流式请求
  *
@@ -357,12 +370,12 @@ function runChatStream(requestBody, assistantMsg) {
   assistantMsg.content = ''
   assistantMsg.loading = true
   assistantMsg.error = false
-  assistantMsg.statusText = ''
   assistantMsg.toolCalls = []
   assistantMsg.hasKnowledge = undefined
   assistantMsg.detectionResult = null
   assistantMsg.retryPayload = requestBody
 
+  agentStore.clearAgentTasks()
   agentStore.setLoading(true)
   shouldFollowStream.value = true
   scrollToBottom(true)
@@ -372,12 +385,32 @@ function runChatStream(requestBody, assistantMsg) {
   const stop = streamChat('/api/chat/stream', requestBody, {
     onMessage: (data) => {
       if (data.type === 'thinking') {
-        assistantMsg.statusText = data.content || '正在思考...'
+        agentStore.startAgentTask({
+          ...data,
+          toolName: 'thinking',
+          displayText: data.content || '正在思考...',
+        })
+      } else if (data.type === 'agent_start') {
+        agentStore.startAgentTask({
+          ...data,
+          displayText: data.displayText || data.content || `${data.agentName || data.agent_name || data.agent || '智能体'}正在处理...`,
+        })
       } else if (data.type === 'tool_start') {
-        assistantMsg.statusText = `正在调用${getToolName(data.tool)}...`
-        assistantMsg.toolCalls.push({ tool: data.tool, status: 'loading', summary: '' })
+        const agentName = data.agentName || data.agent_name || data.agent || '智能体'
+        agentStore.finishAgentTask({ agentName, toolName: 'thinking' })
+        const task = agentStore.startAgentTask({
+          ...data,
+          displayText: data.displayText || data.content || `正在${getToolName(data.tool)}...`,
+        })
+        const existing = assistantMsg.toolCalls.find((toolCall) => toolCall.key === task.key)
+        if (existing) Object.assign(existing, { tool: data.tool, status: 'loading', summary: '' })
+        else assistantMsg.toolCalls.push({ key: task.key, tool: data.tool, status: 'loading', summary: '' })
       } else if (data.type === 'tool_end') {
-        const tc = [...assistantMsg.toolCalls].reverse().find((t) => t.tool === data.tool && t.status === 'loading')
+        const taskKey = getAgentTaskIdentity(data).key
+        agentStore.finishAgentTask(data)
+        const tc = [...assistantMsg.toolCalls].reverse().find(
+          (toolCall) => (toolCall.key === taskKey || toolCall.tool === data.tool) && toolCall.status === 'loading',
+        )
         if (tc) {
           tc.summary = describeToolResult(data.tool, data.summary)
           tc.status = data.summary && data.summary.startsWith('{"error"') ? 'error' : 'done'
@@ -389,23 +422,37 @@ function runChatStream(requestBody, assistantMsg) {
             assistantMsg.hasKnowledge = true
           }
         }
-        assistantMsg.statusText = '正在分析查询结果...'
         scrollToBottom()
+      } else if (data.type === 'agent_end') {
+        agentStore.finishAgentTask(data)
       } else if (data.type === 'text_chunk') {
-        assistantMsg.statusText = ''
+        const agentName = data.agentName || data.agent_name || data.agent || '智能体'
+        agentStore.finishAgentTask({ agentName, toolName: 'thinking' })
         fullContent += data.content
         assistantMsg.content = fullContent
         scrollToBottom()
       } else if (data.type === 'error') {
-        assistantMsg.content = data.content
-        assistantMsg.loading = false
+        const errorTask = { ...data, displayText: data.content || data.message || '执行失败' }
+        agentStore.failAgentTask(errorTask)
+        const taskKey = getAgentTaskIdentity(errorTask).key
+        const toolCall = assistantMsg.toolCalls.find((item) => item.key === taskKey)
+        if (toolCall) {
+          toolCall.status = 'error'
+          toolCall.summary = errorTask.displayText
+        }
+        assistantMsg.content = assistantMsg.content || errorTask.displayText
         assistantMsg.error = true
+      } else if (data.type === 'done') {
+        if (!fullContent && data.full_text) {
+          fullContent = data.full_text
+          assistantMsg.content = fullContent
+        }
+        agentStore.clearAgentTasks()
       }
-      // done 事件仅携带 full_text 汇总信息，文本已通过 text_chunk 逐字渲染，无需额外处理
     },
     onDone: () => {
       assistantMsg.loading = false
-      assistantMsg.statusText = ''
+      agentStore.clearAgentTasks()
       agentStore.setLoading(false)
       agentStore.abortController = null
       agentStore.refreshSessions().catch(() => {})
@@ -414,6 +461,7 @@ function runChatStream(requestBody, assistantMsg) {
       assistantMsg.content = assistantMsg.content || `抱歉，处理出错了：${err.message}`
       assistantMsg.loading = false
       assistantMsg.error = true
+      agentStore.clearAgentTasks()
       agentStore.setLoading(false)
       agentStore.abortController = null
       ElMessage.error('对话请求失败，请重试')
@@ -538,7 +586,6 @@ function handleStop() {
   const lastMsg = agentStore.messages[agentStore.messages.length - 1]
   if (lastMsg?.loading) {
     lastMsg.loading = false
-    lastMsg.statusText = ''
     lastMsg.content += '\n[已停止生成]'
   }
 }
@@ -1018,9 +1065,12 @@ onBeforeUnmount(() => {
 }
 
 .assistant-bubble {
-  background: transparent;
+  max-width: min(820px, 84%);
+  padding: 14px 16px;
+  background: #f4f8fc;
   border: 0;
   color: $text-regular;
+  border-radius: 16px;
   border-bottom-left-radius: 6px;
 
   &.is-error {
@@ -1029,23 +1079,46 @@ onBeforeUnmount(() => {
 }
 
 .message-content {
+  white-space: normal;
+}
+
+.user-bubble .message-content {
   white-space: pre-wrap;
 }
 
 .markdown-body {
   :deep(p) {
-    margin: 0 0 $spacing-xs;
+    margin: 0 0 10px;
+  }
+  :deep(p:last-child) {
+    margin-bottom: 0;
   }
   :deep(h1),
   :deep(h2),
   :deep(h3) {
-    margin-top: $spacing-sm;
-    margin-bottom: $spacing-xs;
+    margin: 16px 0 8px;
+    line-height: 1.35;
+  }
+  :deep(h1:first-child),
+  :deep(h2:first-child),
+  :deep(h3:first-child) {
+    margin-top: 0;
+  }
+  :deep(ul),
+  :deep(ol) {
+    margin: 8px 0 10px;
+    padding-left: 22px;
+  }
+  :deep(li + li) {
+    margin-top: 3px;
   }
   :deep(table) {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
     border-collapse: collapse;
     width: 100%;
-    margin: $spacing-sm 0;
+    margin: 10px 0;
   }
   :deep(th),
   :deep(td) {
@@ -1056,6 +1129,24 @@ onBeforeUnmount(() => {
     background: #eef2f7;
     padding: 2px 4px;
     border-radius: 3px;
+  }
+  :deep(pre) {
+    max-width: 100%;
+    margin: 10px 0;
+    padding: 12px;
+    overflow-x: auto;
+    border-radius: 8px;
+    background: #eaf0f6;
+  }
+  :deep(pre code) {
+    padding: 0;
+    background: transparent;
+  }
+  :deep(blockquote) {
+    margin: 10px 0;
+    padding: 2px 0 2px 12px;
+    border-left: 3px solid #bfd8f4;
+    color: $text-secondary;
   }
   :deep(img) {
     max-width: 100%;
@@ -1085,17 +1176,37 @@ onBeforeUnmount(() => {
   }
 }
 
-/* ── Agent 思考过程提示 ── */
-.thinking-hint {
+/* ── 并行 Agent 状态 ── */
+.agent-task-list {
   display: flex;
-  align-items: center;
-  gap: $spacing-xs;
-  color: $text-secondary;
-  font-size: 13px;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
 
-  .is-loading {
-    animation: rotating 1s linear infinite;
+.agent-task-chip {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #eaf4ff;
+  color: $primary-color-dark;
+  font-size: 12px;
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
+
+  &.is-error {
+    background: #fff1f1;
+    color: $danger-color;
+  }
+
+  .is-loading { animation: rotating 1s linear infinite; }
 }
 
 /* ── 工具调用可视化 ── */
@@ -1258,8 +1369,10 @@ onBeforeUnmount(() => {
 
 @media (max-width: 768px) {
   .message-bubble {
-    max-width: 88%;
+    max-width: 92%;
   }
+
+  .assistant-bubble { padding: 12px 13px; }
 
 }
 </style>

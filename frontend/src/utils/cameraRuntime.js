@@ -39,6 +39,22 @@ export function cameraAccessErrorMessage(error) {
   return error?.message || '摄像头启动失败'
 }
 
+export function getContainedFrameCrop(contentWidth, contentHeight, frameWidth, frameHeight) {
+  const values = [contentWidth, contentHeight, frameWidth, frameHeight].map(Number)
+  if (!values.every((value) => Number.isFinite(value) && value > 0)) return null
+
+  const [sourceWidth, sourceHeight, targetWidth, targetHeight] = values
+  const scale = Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight)
+  const width = sourceWidth * scale
+  const height = sourceHeight * scale
+  return {
+    x: (targetWidth - width) / 2,
+    y: (targetHeight - height) / 2,
+    width,
+    height,
+  }
+}
+
 export function releaseCameraResources({
   mediaStream,
   client,
