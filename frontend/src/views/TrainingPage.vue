@@ -536,23 +536,27 @@ async function stopTask(task) {
 
 // ── 选择任务并开始监控 ──
 async function selectTask(task) {
+  disposeCharts()
   selectedTask.value = task
   evalReport.value = null
   taskMetrics.value = []
   statusState.value = 'loading'
   statusError.value = ''
   resetPredictState()
-  await nextTick()
-  initCharts()
   await fetchStatus()
   startPolling()
 }
 
 // ── 初始化 ECharts 图表 ──
-function initCharts() {
+function disposeCharts() {
   if (lossChart) lossChart.dispose()
   if (mapChart) mapChart.dispose()
+  lossChart = null
+  mapChart = null
+}
 
+function initCharts() {
+  disposeCharts()
   if (lossChartRef.value) {
     lossChart = echarts.init(lossChartRef.value, CHART_THEME)
   }
@@ -581,9 +585,6 @@ async function fetchStatus() {
     const metricsRes = await getTrainingMetrics(taskId)
     const metrics = metricsRes?.metrics || []
     taskMetrics.value = metrics
-    if (metrics.length > 0) {
-      updateCharts(metrics)
-    }
 
     // 任务已结束（完成/失败/取消）则停止轮询
     if (
@@ -596,7 +597,14 @@ async function fetchStatus() {
     }
     statusState.value = 'success'
     statusError.value = ''
+    // success 状态会重新挂载 TrainingMonitor，等待图表容器进入 DOM 后再初始化。
+    await nextTick()
+    if (!lossChart || !mapChart) {
+      initCharts()
+    }
+    updateCharts(metrics)
   } catch (e) {
+    disposeCharts()
     statusState.value = 'error'
     statusError.value = getErrorMessage(e)
     stopPolling()
@@ -856,8 +864,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopPolling()
-  if (lossChart) lossChart.dispose()
-  if (mapChart) mapChart.dispose()
+  disposeCharts()
 })
 </script>
 
