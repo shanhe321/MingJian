@@ -1,3 +1,4 @@
+import asyncio
 import json
 import importlib
 from types import SimpleNamespace
@@ -115,6 +116,52 @@ async def test_supervisor_normalizes_routes(response, expected):
 
 
 @pytest.mark.asyncio
+async def test_supervisor_routes_image_and_question_in_parallel():
+    llm = QueueLLM([])
+    supervisor = SupervisorAgent(llm)
+
+    routed = await supervisor.route(
+        {
+            "messages": [
+                HumanMessage(
+                    content=(
+                        "请检测这张 PCB 图片，同时解释 IoU 是什么？\n"
+                        "[附件图片路径: upload.jpg]"
+                    )
+                )
+            ],
+            "is_superuser": False,
+        }
+    )
+
+    assert routed == {"next_agent": ["detection", "analysis"]}
+    assert llm.calls == []
+
+
+@pytest.mark.asyncio
+async def test_supervisor_routes_detection_dependent_question_sequentially():
+    llm = QueueLLM([])
+    supervisor = SupervisorAgent(llm)
+
+    routed = await supervisor.route(
+        {
+            "messages": [
+                HumanMessage(
+                    content=(
+                        "这张图片有什么缺陷，严重吗，应该怎么处理？\n"
+                        "[附件图片路径: upload.jpg]"
+                    )
+                )
+            ],
+            "is_superuser": False,
+        }
+    )
+
+    assert routed == {"next_agent": "detection_then_analysis"}
+    assert llm.calls == []
+
+
+@pytest.mark.asyncio
 async def test_graph_routes_to_analysis_and_summarizes():
     worker_llm = QueueLLM([])
     supervisor_llm = QueueLLM(["analysis", "已汇总分析结果"])
@@ -158,6 +205,135 @@ async def test_graph_routes_to_analysis_and_summarizes():
     assert result["final_response"] == "已汇总分析结果"
     assert len(supervisor_llm.calls) == 2
     assert worker_llm.calls == []
+
+
+@pytest.mark.asyncio
+async def test_graph_runs_detection_and_analysis_branches_in_parallel():
+    worker_llm = QueueLLM([])
+    supervisor_llm = QueueLLM(["并行结果已汇总"])
+    started = set()
+    both_started = asyncio.Event()
+
+    async def mark_started(name):
+        started.add(name)
+        if started == {"detection", "analysis"}:
+            both_started.set()
+        await asyncio.wait_for(both_started.wait(), timeout=1)
+
+    async def detection_node(state):
+        await mark_started("detection")
+        return {
+            "detection_result": {"output": "检测到 1 个短路缺陷"},
+            "tool_events": [{"tool": "detect_single_image"}],
+            "agent_used": "detection",
+        }
+
+    async def analysis_node(state):
+        await mark_started("analysis")
+        return {
+            "analysis_result": {"output": "IoU 用于衡量预测框与真实框的重叠程度"},
+            "tool_events": [{"tool": "search_knowledge"}],
+            "agent_used": "analysis",
+        }
+
+    async def management_node(state):
+        raise AssertionError("不应调用 management")
+
+    graph = build_agent_graph(
+        worker_llm,
+        management_node,
+        detection_node,
+        analysis_node,
+        supervisor_llm=supervisor_llm,
+    )
+    result = await graph.ainvoke(
+        {
+            "messages": [
+                HumanMessage(
+                    content=(
+                        "请检测这张 PCB 图片，同时解释 IoU 是什么？\n"
+                        "[附件图片路径: upload.jpg]"
+                    )
+                )
+            ],
+            "user_id": 3,
+            "session_id": "parallel",
+            "is_superuser": False,
+            "tool_events": [],
+        }
+    )
+
+    assert started == {"detection", "analysis"}
+    assert result["detection_result"]["output"] == "检测到 1 个短路缺陷"
+    assert result["analysis_result"]["output"].startswith("IoU")
+    assert result["agent_used"] == "analysis+detection"
+    assert {event["tool"] for event in result["tool_events"]} == {
+        "detect_single_image",
+        "search_knowledge",
+    }
+    assert result["final_response"] == "并行结果已汇总"
+
+
+@pytest.mark.asyncio
+async def test_graph_passes_detection_result_to_dependent_analysis():
+    worker_llm = QueueLLM([])
+    supervisor_llm = QueueLLM(["依赖问题已汇总"])
+    call_order = []
+
+    async def detection_node(state, config=None):
+        call_order.append("detection")
+        return {
+            "detection_result": {"output": "检测到短路，风险等级为 high"},
+            "tool_events": [{"tool": "detect_single_image"}],
+            "agent_used": "detection",
+        }
+
+    async def analysis_node(state, config=None):
+        call_order.append("analysis")
+        content = state["messages"][-1].content
+        assert "本次真实检测结果：检测到短路，风险等级为 high" in content
+        return {
+            "analysis_result": {"output": "短路应立即隔离并人工复核"},
+            "tool_events": [{"tool": "search_knowledge"}],
+            "agent_used": "analysis",
+        }
+
+    async def management_node(state, config=None):
+        raise AssertionError("不应调用 management")
+
+    graph = build_agent_graph(
+        worker_llm,
+        management_node,
+        detection_node,
+        analysis_node,
+        supervisor_llm=supervisor_llm,
+    )
+    result = await graph.ainvoke(
+        {
+            "messages": [
+                HumanMessage(
+                    content=(
+                        "这张图片有什么缺陷，严重吗，应该怎么处理？\n"
+                        "[附件图片路径: upload.jpg]"
+                    )
+                )
+            ],
+            "user_id": 3,
+            "session_id": "dependent",
+            "is_superuser": False,
+            "tool_events": [],
+        }
+    )
+
+    assert call_order == ["detection", "analysis"]
+    assert result["detection_result"]["output"].startswith("检测到短路")
+    assert result["analysis_result"]["output"].startswith("短路应立即隔离")
+    assert result["agent_used"] == "analysis+detection"
+    assert [event["tool"] for event in result["tool_events"]] == [
+        "detect_single_image",
+        "search_knowledge",
+    ]
+    assert result["final_response"] == "依赖问题已汇总"
 
 
 def test_sub_agents_bind_only_their_documented_tools(monkeypatch):
