@@ -33,13 +33,14 @@
   height: 100vh;
   min-width: 0;
   overflow: hidden;
-  background: #0f2e36;
+  background: #1a4a56;
 
   &__image {
     width: 100%;
     height: 100%;
     object-fit: cover;
     object-position: center;
+    filter: brightness(1.18) contrast(1.05) saturate(1.08);
   }
 
   &__overlay {
@@ -50,9 +51,9 @@
     padding: 48px;
     background: linear-gradient(
       180deg,
-      rgba(15, 46, 54, 0.08) 0%,
-      rgba(15, 46, 54, 0.55) 55%,
-      rgba(15, 46, 54, 0.82) 100%
+      rgba(15, 46, 54, 0) 0%,
+      rgba(15, 46, 54, 0.22) 55%,
+      rgba(15, 46, 54, 0.52) 100%
     );
   }
 
