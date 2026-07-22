@@ -48,7 +48,7 @@ from app.entity.db_models import (
     ModelVersion,
     User,
 )
-from app.services.quality_service import finalize_detection_task
+from app.services.quality_service import finalize_detection_task, resolve_class_name_cn
 from app.services.audit_service import write_audit
 from app.services.detection_service import detection_service
 from app.services.upload_service import read_valid_image
@@ -641,6 +641,7 @@ async def camera_detection_ws(websocket: WebSocket):
     fps_start_time = time.time()
     fps_frame_count = 0
     camera_task_id = None
+    camera_class_names_cn = {}
     saved_keyframes = 0
     total_objects = 0
     total_inference_time = 0.0
@@ -691,6 +692,11 @@ async def camera_detection_ws(websocket: WebSocket):
                         camera_task = model_db.query(DetectionTask).filter(
                             DetectionTask.id == camera_task_id
                         ).first()
+                        camera_class_names_cn = (
+                            camera_task.scene.class_names_cn
+                            if camera_task and camera_task.scene and camera_task.scene.class_names_cn
+                            else {}
+                        )
                         model, _model_version = detection_service._load_model(
                             model_db,
                             camera_task.scene_id,
@@ -792,6 +798,9 @@ async def camera_detection_ws(websocket: WebSocket):
                             detections.append(
                                 {
                                     "class_name": class_name,
+                                    "class_name_cn": resolve_class_name_cn(
+                                        class_name, camera_class_names_cn
+                                    ),
                                     "class_id": class_id,
                                     "confidence": round(confidence, 4),
                                     "bbox": [
@@ -830,7 +839,9 @@ async def camera_detection_ws(websocket: WebSocket):
                                 frame_db.add(DetectionResult(
                                     task_id=camera_task_id, item_id=item.id,
                                     image_path=input_object, annotated_image_path=result_object,
-                                    class_name=detection["class_name"], class_id=detection["class_id"],
+                                    class_name=detection["class_name"],
+                                    class_name_cn=detection["class_name_cn"],
+                                    class_id=detection["class_id"],
                                     confidence=detection["confidence"], bbox=detection["bbox"],
                                     inference_time=inference_time,
                                 ))
@@ -849,6 +860,7 @@ async def camera_detection_ws(websocket: WebSocket):
                                     image_path=f"camera-live-frame:{frame_count}",
                                     annotated_image_path=None,
                                     class_name=detection["class_name"],
+                                    class_name_cn=detection["class_name_cn"],
                                     class_id=detection["class_id"],
                                     confidence=detection["confidence"],
                                     bbox=detection["bbox"],

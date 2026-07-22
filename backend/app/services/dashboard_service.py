@@ -86,11 +86,11 @@ class DashboardService:
                 user_id,
             )
             class_rows = results.with_entities(
-                DetectionResult.class_name_cn,
                 DetectionResult.class_name,
+                func.max(DetectionResult.class_name_cn),
                 func.count(DetectionResult.id),
                 func.avg(DetectionResult.confidence),
-            ).group_by(DetectionResult.class_name_cn, DetectionResult.class_name).all()
+            ).group_by(DetectionResult.class_name).all()
             risk_rows = reports.with_entities(
                 DetectionReport.risk_level, func.count(DetectionReport.id)
             ).group_by(DetectionReport.risk_level).all()
@@ -133,7 +133,7 @@ class DashboardService:
                         "value": count,
                         "average_confidence": round(float(confidence or 0), 4),
                     }
-                    for cn, name, count, confidence in class_rows
+                    for name, cn, count, confidence in class_rows
                 ],
                 "risk_distribution": [
                     {"name": risk or "none", "value": count} for risk, count in risk_rows
@@ -260,14 +260,14 @@ class DashboardService:
             start_date = datetime.now() - timedelta(days=days)
             rows = _user_scope(
                 db.query(
-                    DetectionResult.class_name_cn,
                     DetectionResult.class_name,
+                    func.max(DetectionResult.class_name_cn).label("class_name_cn"),
                     func.count(DetectionResult.id).label("count"),
                 ).join(DetectionTask, DetectionResult.task_id == DetectionTask.id).filter(
                     DetectionTask.created_at >= start_date
                 ),
                 user_id,
-            ).group_by(DetectionResult.class_name_cn, DetectionResult.class_name).order_by(
+            ).group_by(DetectionResult.class_name).order_by(
                 func.count(DetectionResult.id).desc()
             ).all()
             return {

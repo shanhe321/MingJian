@@ -358,16 +358,18 @@ function renderClassChart(distribution = []) {
     legend: {
       type: 'scroll',
       orient: 'vertical',
-      right: 10,
-      top: 20,
-      bottom: 20,
+      right: 4,
+      top: 'middle',
+      width: '38%',
+      itemGap: 8,
     },
     series: [
       {
         type: 'pie',
-        radius: '65%',
-        center: ['35%', '50%'],
+        radius: '58%',
+        center: ['30%', '50%'],
         data: distribution,
+        avoidLabelOverlap: true,
         emphasis: {
           itemStyle: {
             shadowBlur: 10,
@@ -376,9 +378,11 @@ function renderClassChart(distribution = []) {
           },
         },
         label: {
-          formatter: '{b}\n{d}%',
+          formatter: (params) => (params.percent >= 5 ? `${params.name}\n${params.percent}%` : ''),
           fontSize: 12,
         },
+        labelLayout: { hideOverlap: true },
+        labelLine: { length: 10, length2: 8 },
       },
     ],
   })

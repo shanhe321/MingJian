@@ -38,12 +38,18 @@ PCB_CLASS_NAMES_CN = {
 HIGH_RISK = {"short", "open_circuit", "missing_hole"}
 
 
-def class_name_cn(task: DetectionTask, class_name: str) -> str:
-    mapping = task.scene.class_names_cn if task.scene and task.scene.class_names_cn else {}
+def resolve_class_name_cn(class_name: str, mapping=None) -> str:
+    mapping = mapping or {}
     if isinstance(mapping, str):
         import json
         mapping = json.loads(mapping)
     return mapping.get(class_name) or PCB_CLASS_NAMES_CN.get(class_name) or class_name
+
+
+def class_name_cn(task: DetectionTask | None, class_name: str) -> str:
+    scene = getattr(task, "scene", None) if task is not None else None
+    mapping = scene.class_names_cn if scene and scene.class_names_cn else {}
+    return resolve_class_name_cn(class_name, mapping)
 
 
 def _is_pcb_scene(task: DetectionTask | None) -> bool:
@@ -218,11 +224,11 @@ def _upsert_snapshot(
     defective = successful_units - passed
     distribution = {
         (cn or name): count
-        for cn, name, count in result_query.with_entities(
-            DetectionResult.class_name_cn,
+        for name, cn, count in result_query.with_entities(
             DetectionResult.class_name,
+            func.max(DetectionResult.class_name_cn),
             func.count(DetectionResult.id),
-        ).group_by(DetectionResult.class_name_cn, DetectionResult.class_name)
+        ).group_by(DetectionResult.class_name)
     }
     total_images = int(
         task_query.with_entities(func.coalesce(func.sum(DetectionTask.total_images), 0)).scalar() or 0
