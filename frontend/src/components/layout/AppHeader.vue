@@ -1,8 +1,8 @@
 <template>
   <header class="app-header">
-    <router-link class="header-brand" to="/chat" aria-label="RSOD Agent 首页">
-      <span class="brand-logo"><img :src="rsodLogo" alt="" /></span>
-      <span class="brand-name">RSOD Agent</span>
+    <router-link class="header-brand" to="/chat" aria-label="芯明鉴首页">
+      <span class="brand-logo"><img src="/favicon.png" alt="" /></span>
+      <span class="brand-name">芯明鉴</span>
     </router-link>
     <div class="header-center">
       <ModeSwitcher />
@@ -11,7 +11,6 @@
 </template>
 
 <script setup>
-import rsodLogo from '@/assets/images/rsod-logo.png'
 import ModeSwitcher from './ModeSwitcher.vue'
 </script>
 
@@ -55,19 +54,16 @@ import ModeSwitcher from './ModeSwitcher.vue'
   .brand-logo {
     display: inline-grid;
     place-items: center;
-    width: 34px;
-    height: 34px;
+    width: 28px;
+    height: 28px;
     overflow: hidden;
-    border: 1px solid $border-color;
-    border-radius: 10px;
-    background: #fff;
+    border-radius: 8px;
+    background: transparent;
 
     img {
-      width: 32px;
-      height: 32px;
-      max-width: none;
-      object-fit: cover;
-      transform: translateX(-3%) scale(1.55);
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
     }
   }
 }

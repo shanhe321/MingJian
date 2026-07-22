@@ -3,7 +3,7 @@
     <div class="auth-form">
       <div class="auth-form__header">
         <h2>创建账号</h2>
-        <p>注册后即可使用目标检测智能体平台</p>
+        <p>注册后即可使用芯明鉴</p>
       </div>
 
       <el-form

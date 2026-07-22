@@ -31,7 +31,7 @@
         resize="none"
         :placeholder="currentMode.placeholder"
         :disabled="loading"
-        aria-label="向 RSOD Agent 发送消息"
+        aria-label="向芯明鉴发送消息"
         @update:model-value="$emit('update:modelValue', $event)"
         @keydown.enter.exact.prevent="$emit('send')"
       />

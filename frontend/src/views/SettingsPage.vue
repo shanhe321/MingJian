@@ -94,7 +94,7 @@
         <span>关于系统</span>
       </template>
       <el-descriptions :column="3" border>
-        <el-descriptions-item label="系统名称">RSOD Agent Platform</el-descriptions-item>
+        <el-descriptions-item label="系统名称">芯明鉴</el-descriptions-item>
         <el-descriptions-item label="版本号">v0.1.0</el-descriptions-item>
         <el-descriptions-item label="检测模型">YOLO11n</el-descriptions-item>
         <el-descriptions-item label="前端框架">Vue 3 + Element Plus</el-descriptions-item>

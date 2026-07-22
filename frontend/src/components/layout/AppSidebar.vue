@@ -1,8 +1,8 @@
 <template>
   <aside class="app-sidebar" aria-label="主导航">
     <div class="sidebar-rail">
-      <router-link class="brand-mark" to="/chat" aria-label="RSOD 智能检测平台">
-        <img :src="rsodLogo" alt="" />
+      <router-link class="brand-mark" to="/chat" aria-label="芯明鉴">
+        <img src="/favicon.png" alt="" />
       </router-link>
 
       <div class="chat-actions" aria-label="Chat 会话操作">
@@ -71,7 +71,6 @@ import {
   UserFilled,
 } from '@element-plus/icons-vue'
 import UserAvatarMenu from './UserAvatarMenu.vue'
-import rsodLogo from '@/assets/images/rsod-logo.png'
 import { useAgentStore } from '@/stores/agent'
 import { useUserStore } from '@/stores/user'
 import { getSidebarItems } from '@/utils/navigation'
@@ -136,21 +135,18 @@ function toggleSessions() {
 .brand-mark {
   display: inline-grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 32px;
+  height: 32px;
   margin-top: 12px;
-  border-radius: 14px;
-  border: 1px solid $border-color;
-  background: #fff;
+  border-radius: 10px;
+  background: transparent;
   box-shadow: none;
   overflow: hidden;
 
   img {
-    width: 40px;
-    height: 40px;
-    max-width: none;
-    object-fit: cover;
-    transform: translateX(-3%) scale(1.55);
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
 }
 
