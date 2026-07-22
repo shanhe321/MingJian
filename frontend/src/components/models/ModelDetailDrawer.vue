@@ -20,8 +20,13 @@
       <section class="per-class">
         <h3>各类别 AP</h3>
         <el-table :data="perClassRows" size="small">
-          <el-table-column prop="name" label="类别" />
-          <el-table-column prop="value" label="AP"><template #default="{ row }">{{ metric(row.value) }}</template></el-table-column>
+          <el-table-column prop="displayName" label="类别">
+            <template #default="{ row }">
+              <span>{{ row.displayName }}</span>
+              <small v-if="row.displayName !== row.className">{{ row.className }}</small>
+            </template>
+          </el-table-column>
+          <el-table-column prop="value" label="AP"><template #default="{ row }">{{ formatMetricPercent(row.value) }}</template></el-table-column>
           <template #empty><el-empty description="暂无类别指标" :image-size="60" /></template>
         </el-table>
       </section>
@@ -35,6 +40,7 @@ import AsyncState from '@/components/common/AsyncState.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import ModelMetrics from './ModelMetrics.vue'
 import ModelArtifactPanel from './ModelArtifactPanel.vue'
+import { formatMetricPercent, normalizePerClassAp } from '@/utils/modelMetrics'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -46,8 +52,7 @@ const props = defineProps({
 defineEmits(['update:modelValue', 'retry'])
 
 const sceneName = computed(() => props.scenes.find((scene) => scene.id === props.model?.scene_id)?.display_name || `场景 #${props.model?.scene_id ?? '-'}`)
-const perClassRows = computed(() => Object.entries(props.model?.per_class_ap || {}).map(([name, value]) => ({ name, value })))
-const metric = (value) => value == null ? '-' : Number(value).toFixed(4)
+const perClassRows = computed(() => normalizePerClassAp(props.model?.per_class_ap))
 const formatDate = (value) => value ? new Date(value).toLocaleString('zh-CN') : '-'
 </script>
 
@@ -57,4 +62,5 @@ const formatDate = (value) => value ? new Date(value).toLocaleString('zh-CN') : 
 .model-heading h2 { margin: 5px 0 0; color: $text-primary; font-size: 21px; }
 .details, .per-class { margin-top: $spacing-lg; }
 .per-class h3 { color: $text-primary; font-size: 15px; }
+.per-class small { display: block; margin-top: 2px; color: $text-secondary; font-size: 11px; }
 </style>

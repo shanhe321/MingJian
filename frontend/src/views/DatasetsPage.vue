@@ -1,6 +1,6 @@
 <template>
   <div class="datasets-page">
-    <PageHeader title="数据集" description="准备、导入并校验可用于模型训练的真实标注数据。">
+    <PageHeader title="数据集">
       <template #actions><el-button @click="openImport()"><el-icon><Upload/></el-icon>导入数据集</el-button><el-button type="primary" @click="openEditor()"><el-icon><Plus/></el-icon>新建数据集</el-button></template>
     </PageHeader>
     <section v-if="!loadError && !listLoading" class="summary-grid"><article v-for="item in summaryCards" :key="item.label"><span>{{ item.label }}</span><strong>{{ item.value }}</strong><small>{{ item.note }}</small></article></section>

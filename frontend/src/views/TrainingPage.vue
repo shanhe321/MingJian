@@ -1,6 +1,6 @@
 <template>
   <div class="training-page">
-    <PageHeader title="模型训练" description="创建训练任务、监控指标，并评估与导出模型产物。">
+    <PageHeader title="模型训练">
       <template #actions>
         <el-button type="primary" @click="showCreateDialog = true">
           <el-icon><Plus /></el-icon>新建训练任务
