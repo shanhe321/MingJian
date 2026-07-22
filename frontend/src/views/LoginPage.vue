@@ -3,7 +3,7 @@
     <div class="auth-form">
       <div class="auth-form__header">
         <h2>欢迎回来</h2>
-        <p>登录您的账号以继续使用平台</p>
+        <p>登录您的账号以继续使用芯明鉴</p>
       </div>
 
       <el-form

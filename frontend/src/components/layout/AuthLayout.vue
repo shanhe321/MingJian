@@ -1,16 +1,12 @@
-<script setup>
-import rsodLogo from '@/assets/images/rsod-logo.png'
-</script>
-
 <template>
   <div class="auth-layout">
     <aside class="auth-visual">
-      <img src="/teaser.png" alt="PCB 缺陷检测平台" class="auth-visual__image" />
+      <img src="/teaser.png" alt="芯明鉴登录视觉图" class="auth-visual__image" />
       <div class="auth-visual__overlay">
         <div class="auth-visual__content">
-          <img :src="rsodLogo" alt="logo" class="auth-visual__logo" />
-          <h1>PCB Defect Detection Platform</h1>
-          <p>基于 YOLOv11 的目标检测智能体平台</p>
+          <img src="/favicon.png" alt="芯明鉴" class="auth-visual__logo" />
+          <h1>芯明鉴</h1>
+          <p>基于 YOLOv11 的 PCB 缺陷智能检测平台</p>
         </div>
       </div>
     </aside>
@@ -27,13 +23,15 @@ import rsodLogo from '@/assets/images/rsod-logo.png'
 .auth-layout {
   display: flex;
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .auth-visual {
   position: relative;
   flex: 1;
-  min-height: 100vh;
+  height: 100vh;
+  min-width: 0;
   overflow: hidden;
   background: #0f2e36;
 
@@ -84,11 +82,13 @@ import rsodLogo from '@/assets/images/rsod-logo.png'
 }
 
 .auth-panel {
-  flex: 0 0 480px;
+  flex: 0 0 clamp(520px, 46vw, 680px);
+  height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 48px 40px;
+  padding: 32px clamp(32px, 4vw, 56px);
+  overflow-y: auto;
   background:
     radial-gradient(circle at 80% 0%, rgba(91, 124, 250, 0.08), transparent 40%),
     linear-gradient(180deg, #f8fbff 0%, #f5f7fc 100%),
@@ -96,22 +96,25 @@ import rsodLogo from '@/assets/images/rsod-logo.png'
 
   &__inner {
     width: 100%;
-    max-width: 380px;
+    max-width: 460px;
   }
 }
 
 @media (max-width: 960px) {
   .auth-layout {
     flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
   }
 
   .auth-visual {
     flex: none;
-    min-height: 240px;
-    max-height: 320px;
+    width: 100%;
+    height: clamp(200px, 32vh, 280px);
+    min-height: 0;
 
     &__overlay {
-      padding: 24px 32px;
+      padding: 20px 24px;
     }
 
     &__content {
@@ -133,7 +136,10 @@ import rsodLogo from '@/assets/images/rsod-logo.png'
 
   .auth-panel {
     flex: 1;
-    padding: 32px 24px 48px;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    padding: 24px 24px 32px;
   }
 }
 </style>
