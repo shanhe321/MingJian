@@ -4,7 +4,9 @@
       <img src="/teaser.png" alt="芯明鉴登录视觉图" class="auth-visual__image" />
       <div class="auth-visual__overlay">
         <div class="auth-visual__content">
-          <img src="/favicon.png" alt="芯明鉴" class="auth-visual__logo" />
+          <span class="auth-visual__logo">
+            <img src="/favicon.png" alt="芯明鉴" />
+          </span>
           <h1>芯明鉴</h1>
           <p>基于 YOLOv11 的 PCB 缺陷智能检测平台</p>
         </div>
@@ -33,14 +35,14 @@
   height: 100vh;
   min-width: 0;
   overflow: hidden;
-  background: #1a4a56;
+  background: #eef6fd;
 
   &__image {
     width: 100%;
     height: 100%;
     object-fit: cover;
     object-position: center;
-    filter: brightness(1.18) contrast(1.05) saturate(1.08);
+    opacity: 0.72;
   }
 
   &__overlay {
@@ -49,17 +51,16 @@
     display: flex;
     align-items: flex-end;
     padding: 48px;
-    background: linear-gradient(
-      180deg,
-      rgba(15, 46, 54, 0) 0%,
-      rgba(15, 46, 54, 0.22) 55%,
-      rgba(15, 46, 54, 0.52) 100%
-    );
+    background: rgba(238, 246, 253, 0.2);
   }
 
   &__content {
     max-width: 420px;
-    color: #fff;
+    padding: 24px;
+    border: 1px solid rgba(191, 216, 244, 0.82);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.9);
+    color: $text-primary;
 
     h1 {
       font-size: 28px;
@@ -71,14 +72,28 @@
     p {
       font-size: 15px;
       line-height: 1.6;
-      color: rgba(255, 255, 255, 0.82);
+      color: $text-secondary;
     }
   }
 
   &__logo {
-    width: 44px;
-    height: 44px;
+    display: inline-grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    overflow: hidden;
     margin-bottom: 20px;
+    border: 1px solid $border-color;
+    border-radius: 14px;
+    background: #fff;
+
+    img {
+      width: 50px;
+      height: 50px;
+      max-width: none;
+      object-fit: contain;
+      transform: translate(-3.5%, -3%) scale(1.2);
+    }
   }
 }
 
@@ -129,8 +144,6 @@
     }
 
     &__logo {
-      width: 36px;
-      height: 36px;
       margin-bottom: 12px;
     }
   }

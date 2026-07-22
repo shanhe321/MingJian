@@ -6,7 +6,12 @@
         <span v-if="running" class="stage-meta">{{ device.toUpperCase() }} · {{ activeSceneName }}</span>
       </div>
 
-      <div class="preview-frame" :class="{ 'is-running': running || connecting }">
+      <div class="preview-area">
+      <div
+        class="preview-frame"
+        :class="{ 'is-running': running || connecting }"
+        :style="{ '--preview-aspect-ratio': `${canvasSize.width} / ${canvasSize.height}` }"
+      >
         <video ref="videoRef" autoplay playsinline muted></video>
         <canvas
           v-show="hasAnnotatedFrame"
@@ -30,6 +35,7 @@
         </div>
 
         <div v-if="running" class="live-indicator"><i></i>实时推理</div>
+      </div>
       </div>
     </main>
 
@@ -78,6 +84,7 @@ import { createCameraWs } from '@/utils/cameraWs'
 import {
   cameraAccessErrorMessage,
   createCameraRuntimeState,
+  getContainedFrameCrop,
   nextCameraRuntimeState,
   releaseCameraResources,
 } from '@/utils/cameraRuntime'
@@ -230,7 +237,25 @@ function handleResult(result, resultRunId = activeRunId) {
     if (!running.value || resultRunId !== activeRunId) return
     const context = canvasRef.value?.getContext('2d')
     context?.clearRect(0, 0, canvasSize.width, canvasSize.height)
-    context?.drawImage(image, 0, 0, canvasSize.width, canvasSize.height)
+    const crop = getContainedFrameCrop(
+      videoRef.value?.videoWidth || canvasSize.width,
+      videoRef.value?.videoHeight || canvasSize.height,
+      image.naturalWidth,
+      image.naturalHeight,
+    )
+    if (context && crop) {
+      context.drawImage(
+        image,
+        crop.x,
+        crop.y,
+        crop.width,
+        crop.height,
+        0,
+        0,
+        canvasSize.width,
+        canvasSize.height,
+      )
+    }
     hasAnnotatedFrame.value = true
     scheduleNextFrame(resultRunId)
   }
@@ -374,11 +399,14 @@ onBeforeUnmount(() => stop(false))
 
 .preview-frame {
   position: relative;
+  width: 100%;
+  aspect-ratio: var(--preview-aspect-ratio, 16 / 9);
+  max-height: 100%;
+  flex: 0 1 auto;
   min-width: 0;
   min-height: 0;
-  flex: 1;
   overflow: hidden;
-  background: #f5faff;
+  background: #f7fafc;
 
   &::before {
     content: '';
@@ -399,12 +427,24 @@ onBeforeUnmount(() => stop(false))
     width: 100%;
     height: 100%;
     object-fit: contain;
+    background: #f2f7fd;
   }
 
   video { opacity: 0; transition: opacity 0.25s ease; }
   &.is-running video { opacity: 1; }
   &.is-running::before { opacity: 0.12; }
   canvas { z-index: 1; }
+}
+
+.preview-area {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #f2f7fd;
 }
 
 .camera-placeholder,
@@ -433,12 +473,12 @@ onBeforeUnmount(() => stop(false))
 }
 
 .camera-placeholder {
-  strong { color: $text-primary; font-size: 18px; }
-  p { max-width: 430px; margin: 7px 20px 0; color: $text-secondary; font-size: 13px; line-height: 1.6; }
+  strong { color: #26364d; font-size: 18px; }
+  p { max-width: 430px; margin: 7px 20px 0; color: #64748b; font-size: 13px; line-height: 1.6; }
 }
 
 .connecting-overlay {
-  background: #f5faff;
+  background: #f2f7fd;
 
   .el-icon { color: $primary-color; font-size: 28px; }
   strong { margin-top: 10px; color: $text-primary; font-size: 14px; }
