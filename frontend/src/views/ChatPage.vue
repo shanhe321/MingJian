@@ -160,6 +160,7 @@ import DetectionResultCard from '@/components/DetectionResultCard.vue'
 import { useAgentStore } from '@/stores/agent'
 import { renderMarkdown } from '@/utils/markdown'
 import { getAgentTaskIdentity } from '@/utils/agentTasks'
+import { composeDetectionUserMessage } from '@/utils/chatMessages'
 import { isNearScrollBottom } from '@/utils/chatScroll'
 import { streamChat, TOOL_NAME_MAP } from '@/utils/stream'
 import {
@@ -238,7 +239,7 @@ const composerBusy = computed(() => agentStore.isLoading || agentStore.sessionLo
 
 const canSend = computed(() => {
   return !composerBusy.value
-    && (inputText.value.trim() || selectedFiles.value.length)
+    && Boolean(inputText.value.trim() || selectedFiles.value.length)
 })
 
 const hasUserMessages = computed(() => {
@@ -498,15 +499,15 @@ async function sendMessage() {
     isDetectionRunning.value = true
     try {
       if (detectionMode.value === 'single') {
-        await runSingleDetection(filesToSend[0])
+        await runSingleDetection(filesToSend[0], message)
       } else if (detectionMode.value === 'batch') {
-        await runBatchDetection(filesToSend)
+        await runBatchDetection(filesToSend, message)
       } else if (detectionMode.value === 'zip') {
-        await runZipDetection(filesToSend[0])
+        await runZipDetection(filesToSend[0], message)
       } else if (detectionMode.value === 'folder') {
-        await runFolderDetection(filesToSend)
+        await runFolderDetection(filesToSend, message)
       } else if (detectionMode.value === 'video') {
-        await runVideoDetection(filesToSend[0])
+        await runVideoDetection(filesToSend[0], message)
       }
     } finally {
       isDetectionRunning.value = false
@@ -683,7 +684,7 @@ function handleDrop(event) {
   applySelectedFiles(files)
 }
 
-async function runSingleDetection(file) {
+async function runSingleDetection(file, message = '') {
   if (!file) return
   if (!isValidAttachment(file, 'single')) {
     ElMessage.warning(fileTypeWarning('single'))
@@ -692,7 +693,7 @@ async function runSingleDetection(file) {
 
   pushMessage({
     role: 'user',
-    content: `[快捷检测] ${file.name}`,
+    content: composeDetectionUserMessage(message, `[快捷检测] ${file.name}`),
     image: file.name,
     imagePreview: createMessageObjectUrl(file),
   })
@@ -727,7 +728,7 @@ async function runSingleDetection(file) {
   scrollToBottom()
 }
 
-async function runBatchDetection(files) {
+async function runBatchDetection(files, message = '') {
   if (!files?.length) return
   if (files.some((file) => !isValidAttachment(file, 'batch'))) {
     ElMessage.warning(fileTypeWarning('batch'))
@@ -739,7 +740,7 @@ async function runBatchDetection(files) {
   const imagePreviews = files.map((f) => createMessageObjectUrl(f))
   pushMessage({
     role: 'user',
-    content: `[批量检测] ${files.length} 张图片`,
+    content: composeDetectionUserMessage(message, `[批量检测] ${files.length} 张图片`),
     images: imagePreviews,
   })
 
@@ -774,7 +775,7 @@ async function runBatchDetection(files) {
   scrollToBottom()
 }
 
-async function runZipDetection(file) {
+async function runZipDetection(file, message = '') {
   if (!file) return
   if (!isValidAttachment(file, 'zip')) {
     ElMessage.warning(fileTypeWarning('zip'))
@@ -783,7 +784,10 @@ async function runZipDetection(file) {
 
   const formData = new FormData()
   formData.append('file', file)
-  pushMessage({ role: 'user', content: `[ZIP 检测] ${file.name}` })
+  pushMessage({
+    role: 'user',
+    content: composeDetectionUserMessage(message, `[ZIP 检测] ${file.name}`),
+  })
   const assistantMsg = pushMessage({
     role: 'assistant',
     content: '正在提交 ZIP 检测...',
@@ -810,13 +814,16 @@ async function runZipDetection(file) {
   }
 }
 
-async function runFolderDetection(files) {
+async function runFolderDetection(files, message = '') {
   if (!files?.length) return
   const formData = new FormData()
   files.forEach((file) => formData.append('files', file, file.webkitRelativePath || file.name))
   formData.append('mode', 'folder')
   formData.append('async_mode', 'true')
-  pushMessage({ role: 'user', content: `[文件夹检测] ${files.length} 张图片` })
+  pushMessage({
+    role: 'user',
+    content: composeDetectionUserMessage(message, `[文件夹检测] ${files.length} 张图片`),
+  })
   const assistantMsg = pushMessage({ role: 'assistant', content: '文件夹任务正在提交...', loading: true })
   shouldFollowStream.value = true
   scrollToBottom(true)
@@ -851,7 +858,7 @@ async function pollFolderProgress(taskId, assistantMsg, maxAttempts = 240) {
   assistantMsg.loading = false
 }
 
-async function runVideoDetection(file) {
+async function runVideoDetection(file, message = '') {
   if (!file) return
   if (!isValidAttachment(file, 'video')) {
     ElMessage.warning(fileTypeWarning('video'))
@@ -870,7 +877,10 @@ async function runVideoDetection(file) {
 
   pushMessage({
     role: 'user',
-    content: `[视频检测] ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)}MB)`,
+    content: composeDetectionUserMessage(
+      message,
+      `[视频检测] ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)}MB)`,
+    ),
     videoUrl,
   })
 

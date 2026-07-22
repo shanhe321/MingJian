@@ -396,7 +396,11 @@ function renderClassChart(distribution = []) {
           },
         },
         label: {
-          formatter: (params) => `${compactChartLabel(params.name, 8)}\n${params.percent}%`,
+          formatter: (params) => (
+            params.percent >= 5
+              ? `${compactChartLabel(params.name, 8)}\n${params.percent}%`
+              : ''
+          ),
           fontSize: 11,
           lineHeight: 15,
         },

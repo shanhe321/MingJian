@@ -33,7 +33,7 @@ from app.entity.db_models import (
     ModelVersion,
     OperationLog,
 )
-from app.services.quality_service import finalize_detection_task
+from app.services.quality_service import class_name_cn, finalize_detection_task
 from app.storage.minio_client import MinIOClient
 from app.storage.redis_client import redis_client
 
@@ -275,7 +275,10 @@ class DetectionService:
                 image_path=input_object,
                 annotated_image_path=annotated_object,
                 class_name=detection["class_name"],
-                class_name_cn=detection.get("class_name_cn"),
+                class_name_cn=(
+                    detection.get("class_name_cn")
+                    or class_name_cn(task, detection["class_name"])
+                ),
                 class_id=detection["class_id"],
                 confidence=detection["confidence"],
                 bbox=detection["bbox"],
@@ -553,6 +556,7 @@ class DetectionService:
                             detection = {
                                 "image_path": input_object,
                                 "class_name": class_name,
+                                "class_name_cn": class_name_cn(task, class_name),
                                 "class_id": class_id,
                                 "confidence": confidence,
                                 "bbox": [round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1)],
@@ -567,6 +571,7 @@ class DetectionService:
                                 image_path=input_object,
                                 annotated_image_path=output_object,
                                 class_name=class_name,
+                                class_name_cn=detection["class_name_cn"],
                                 class_id=class_id,
                                 confidence=confidence,
                                 bbox=detection["bbox"],
@@ -907,6 +912,7 @@ class DetectionService:
                             x1, y1, x2, y2 = box.xyxy[0].tolist()
                             detection = {
                                 "class_name": class_name,
+                                "class_name_cn": class_name_cn(task, class_name),
                                 "class_id": class_id,
                                 "confidence": round(confidence, 4),
                                 "bbox": [
@@ -995,6 +1001,7 @@ class DetectionService:
                                 image_path=input_object,
                                 annotated_image_path=output_object,
                                 class_name=detection["class_name"],
+                                class_name_cn=detection["class_name_cn"],
                                 class_id=detection["class_id"],
                                 confidence=detection["confidence"],
                                 bbox=detection["bbox"],

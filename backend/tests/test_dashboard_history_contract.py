@@ -8,6 +8,7 @@ from app.core.security import hash_password
 from app.entity.db_models import DetectionResult, DetectionScene, DetectionTask, User
 from app.services.dashboard_service import dashboard_service
 from app.services.history_service import history_service
+from app.services.quality_service import resolve_class_name_cn
 from app.services.user_service import user_service
 from main import app
 
@@ -36,6 +37,12 @@ def test_dashboard_history_and_user_routes_match_guide():
         ("PUT", "/api/user/profile"),
         ("PUT", "/api/user/password"),
     }.issubset(routes)
+
+
+def test_detection_class_display_name_uses_scene_mapping_and_pcb_fallback():
+    assert resolve_class_name_cn("defect", {"defect": "缺陷"}) == "缺陷"
+    assert resolve_class_name_cn("missing_hole") == "漏孔"
+    assert resolve_class_name_cn("custom_target") == "custom_target"
 
 
 def test_new_routes_require_authentication(client):
@@ -330,6 +337,7 @@ def test_services_isolate_users_and_match_frontend_payloads(db_session, monkeypa
                 task_id=owner_task.id,
                 image_path="owner.jpg",
                 class_name="defect",
+                class_name_cn="缺陷",
                 class_id=0,
                 confidence=0.8,
                 bbox=[2, 3, 4, 5],
@@ -367,7 +375,7 @@ def test_services_isolate_users_and_match_frontend_payloads(db_session, monkeypa
     assert trend["trend"][-1]["object_count"] == 2
 
     assert dashboard_service.get_class_distribution(owner_id)["distribution"] == [
-        {"name": "defect", "value": 2}
+        {"name": "缺陷", "value": 2}
     ]
     assert dashboard_service.get_scene_distribution(owner_id)["distribution"] == [
         {"name": "看板测试场景", "value": 1}
