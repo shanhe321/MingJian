@@ -201,7 +201,8 @@ def test_rich_report_embeds_signed_original_and_annotated_images():
     assert "![原始图像 1](https://pcb.example.com/api/storage/objects/input?expires=1&signature=a)" in markdown
     assert "![检测标注图 1](https://pcb.example.com/api/storage/objects/result?expires=1&signature=b)" in markdown
     assert "[在新窗口打开检测标注图](https://pcb.example.com/api/storage/objects/result?expires=1&signature=b)" in markdown
-    assert "| 1 | 短路 | short | 91.00% | 1.0, 2.0, 30.0, 40.0 | 12.30 ms |" in markdown
+    assert "| # | 类别 | 类别代码 | 置信度 | 置信度等级 | 位置 | 面积占比 | 复核优先级 | 边界框 x1,y1,x2,y2 | 推理耗时 |" in markdown
+    assert "| 1 | 短路 | short | 91.00% | 较高 | 未记录 | - | 高 | 1.0, 2.0, 30.0, 40.0 | 12.30 ms |" in markdown
 
 
 def test_history_detail_returns_model_and_same_origin_urls_for_clean_items(db_session, monkeypatch):
