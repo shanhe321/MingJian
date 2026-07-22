@@ -1,6 +1,6 @@
 <template>
   <div class="dashboard-page">
-    <PageHeader title="数据看板" description="洞察检测任务、质量结果、目标类别与系统趋势。">
+    <PageHeader title="数据看板">
       <template #actions>
         <div class="dashboard-controls">
         <el-radio-group v-if="userStore.isSuperuser" v-model="scope" @change="loadAllData" style="margin-right: 12px">
