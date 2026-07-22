@@ -51,9 +51,11 @@ onMounted(() => userStore.fetchUserInfo())
 <style lang="scss" scoped>
 .main-layout {
   width: 100%;
-  height: 100%;
+  height: 100dvh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: $bg-color-dark;
 }
 
@@ -77,7 +79,7 @@ onMounted(() => userStore.fetchUserInfo())
 
   &.is-chat-workspace,
   &.is-detect-workspace {
-    height: calc(100vh - #{$header-height});
+    height: calc(100dvh - #{$header-height});
     min-height: 0;
     overflow: hidden;
     box-sizing: border-box;
